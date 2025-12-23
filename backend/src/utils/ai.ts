@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { config } from '../config';
 import { FIELD_CATEGORIES, ALL_FIELDS, calculateCampaignStatistics } from './ruleExecutor';
+import { calculateCampaignHealth, OptimizationInsight } from './campaignOptimizer';
 
 export interface RuleGenerationRequest {
   naturalLanguage: string;
@@ -312,6 +313,9 @@ export async function analyzeCampaign(
   campaignData: any,
   adSetsData: any[]
 ): Promise<CampaignAnalysis> {
+  // Run advanced campaign health analysis
+  const healthAnalysis = calculateCampaignHealth(adSetsData);
+  
   // Calculate statistics
   const stats = calculateCampaignStatistics(adSetsData);
   
@@ -394,6 +398,9 @@ export async function analyzeCampaign(
     })
     .slice(0, 10);
 
+  // Add research-based insights to the basic insights
+  const researchBasedInsights = generateResearchBasedInsights(healthAnalysis, summary, adSetsData);
+  
   // Use AI for deeper insights if API key is available
   let performanceInsights: string[] = [];
   let optimizationOpportunities: OptimizationSuggestion[] = [];
@@ -414,14 +421,81 @@ export async function analyzeCampaign(
     optimizationOpportunities = generateBasicOptimizations(underperforming, summary);
   }
 
+  // Combine AI insights with research-based insights
+  const allInsights = [...researchBasedInsights, ...performanceInsights];
+  const allOpportunities = [
+    ...convertInsightsToOpportunities(healthAnalysis.insights),
+    ...optimizationOpportunities
+  ];
+  
   return {
-    summary,
-    performance_insights: performanceInsights,
-    optimization_opportunities: optimizationOpportunities,
+    summary: {
+      ...summary,
+      health_score: healthAnalysis.score,
+      health_status: healthAnalysis.status,
+    },
+    performance_insights: allInsights,
+    optimization_opportunities: allOpportunities,
     underperforming_ad_sets: underperforming,
     top_performing_ad_sets: topPerforming,
     statistics: stats,
   };
+}
+
+function generateResearchBasedInsights(
+  healthAnalysis: any,
+  summary: any,
+  adSetsData: any[]
+): string[] {
+  const insights: string[] = [];
+  
+  // Add health score insight
+  insights.push(`📊 Campaign Health Score: ${healthAnalysis.score}/100 (${healthAnalysis.status.toUpperCase()})`);
+  
+  // Budget allocation insights
+  const totalBudget = adSetsData.reduce((sum, a) => sum + parseFloat(a.daily_budget || a.lifetime_budget || 0), 0);
+  if (totalBudget > 0) {
+    insights.push(`💰 Total Daily Budget: $${totalBudget.toFixed(2)} across ${adSetsData.length} ad sets`);
+  }
+  
+  // Frequency insights
+  const highFrequency = adSetsData.filter(a => parseFloat(a.performance_metrics?.frequency || 0) > 1.7);
+  if (highFrequency.length > 0) {
+    insights.push(`⚠️ ${highFrequency.length} ad set(s) showing signs of ad fatigue (frequency > 1.7)`);
+  }
+  
+  // Learning phase insights
+  const inLearning = adSetsData.filter(a => {
+    const createdDate = new Date(a.created_time);
+    const daysActive = (Date.now() - createdDate.getTime()) / (1000 * 60 * 60 * 24);
+    return daysActive > 7 && daysActive < 30;
+  });
+  if (inLearning.length > 0) {
+    insights.push(`🎯 ${inLearning.length} ad set(s) in learning phase - maintain consistent budget to optimize faster`);
+  }
+  
+  // Add critical warnings first
+  const criticalInsights = healthAnalysis.insights.filter((i: any) => i.priority === 'critical' || i.priority === 'high');
+  if (criticalInsights.length > 0) {
+    insights.push(`🚨 ${criticalInsights.length} high-priority optimization opportunity(ies) identified`);
+  }
+  
+  return insights;
+}
+
+function convertInsightsToOpportunities(insights: OptimizationInsight[]): OptimizationSuggestion[] {
+  return insights.slice(0, 10).map(insight => ({
+    type: insight.category.toLowerCase().includes('budget') ? 'budget_adjust' :
+          insight.category.toLowerCase().includes('creative') ? 'creative' :
+          insight.category.toLowerCase().includes('audience') ? 'targeting' :
+          insight.type === 'warning' ? 'pause' : 'activate',
+    priority: insight.priority === 'critical' || insight.priority === 'high' ? 'high' :
+              insight.priority === 'medium' ? 'medium' : 'low',
+    title: insight.title,
+    description: `${insight.description}\n\n💡 ${insight.recommendation}`,
+    affected_ad_sets: insight.affected_entities,
+    potential_savings: insight.estimated_savings,
+  }));
 }
 
 async function getAIAnalysis(

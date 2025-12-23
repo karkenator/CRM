@@ -12,6 +12,7 @@ import metricRoutes from './routes/metrics';
 import metaRoutes from './routes/meta';
 import healthRoutes from './routes/health';
 import adSetRuleRoutes from './routes/ad-set-rules';
+import campaignInsightsRoutes from './routes/campaign-insights';
 import { startBackgroundTasks } from './tasks';
 
 const app: Express = express();
@@ -38,6 +39,7 @@ app.use('/api/ad-accounts', adAccountRoutes);
 app.use('/api/commands', commandRoutes);
 app.use('/api/ingest', metricRoutes);
 app.use('/api/ad-set-rules', adSetRuleRoutes);
+app.use('/api/campaign-insights', campaignInsightsRoutes);
 app.use('/meta', metaRoutes);
 
 // Error handling middleware

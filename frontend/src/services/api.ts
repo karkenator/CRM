@@ -236,6 +236,15 @@ class ApiService {
   async executeRule(ruleId: string): Promise<{ data: any }> {
     return this.api.post(`/api/ad-set-rules/${ruleId}/execute`);
   }
+
+  // Campaign Insights endpoints
+  async getCampaignHealth(agentId: string, campaignId: string): Promise<{ data: any }> {
+    return this.api.post('/api/campaign-insights/health', { agent_id: agentId, campaign_id: campaignId });
+  }
+
+  async getQuickWins(agentId: string, campaignId: string): Promise<{ data: any }> {
+    return this.api.post('/api/campaign-insights/quick-wins', { agent_id: agentId, campaign_id: campaignId });
+  }
 }
 
 export const apiService = new ApiService();

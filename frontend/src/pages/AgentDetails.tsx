@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { apiService } from '../services/api';
 import CampaignRules from '../components/CampaignRules';
 import AIRuleChatbot from '../components/AIRuleChatbot';
+import CampaignHealthDashboard from '../components/CampaignHealthDashboard';
 import {
   Agent, 
   MetaAppInfo, 
@@ -12,7 +13,7 @@ import {
   MetaMetrics 
 } from '../types';
 
-type ViewType = 'campaigns' | 'adsets' | 'ads' | 'optimization' | 'rules';
+type ViewType = 'campaigns' | 'adsets' | 'ads' | 'health' | 'optimization' | 'rules';
 
 const AgentDetails: React.FC = () => {
   const { agentId } = useParams<{ agentId: string }>();
@@ -465,14 +466,24 @@ const AgentDetails: React.FC = () => {
                 Ads
             </button>
             <button
+                onClick={() => setCurrentView('health')}
+              className={`px-4 py-2 rounded-t-lg font-medium transition-colors ${
+                currentView === 'health'
+                  ? 'bg-primary text-black border-b-2 border-primary'
+                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+              }`}
+            >
+              Campaign Health
+            </button>
+            <button
                 onClick={() => setCurrentView('optimization')}
               className={`px-4 py-2 rounded-t-lg font-medium transition-colors ${
                 currentView === 'optimization'
                   ? 'bg-primary text-black border-b-2 border-primary'
                   : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
               }`}
-              >
-                Optimization
+            >
+              Optimization
             </button>
             <button
                 onClick={() => setCurrentView('rules')}
@@ -913,6 +924,56 @@ const AgentDetails: React.FC = () => {
               </div>
               )}
             </>
+          )}
+
+          {/* Campaign Health View */}
+          {currentView === 'health' && (
+            <div>
+              {selectedCampaign ? (
+                <div>
+                  <button
+                    onClick={() => setSelectedCampaign(null)}
+                    className="mb-4 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
+                  >
+                    ← Back to Campaigns
+                  </button>
+                  <CampaignHealthDashboard
+                    agentId={agent?.id || ''}
+                    campaignId={selectedCampaign.id}
+                    campaignName={selectedCampaign.name}
+                  />
+                </div>
+              ) : (
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+                    Select a Campaign to Analyze
+                  </h3>
+                  <div className="grid gap-4">
+                    {metaCampaigns.map((campaign) => (
+                      <div
+                        key={campaign.id}
+                        onClick={() => setSelectedCampaign(campaign)}
+                        className="card p-4 hover:shadow-lg cursor-pointer transition-shadow"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <div className="font-medium text-gray-900 dark:text-white">
+                              {campaign.name}
+                            </div>
+                            <div className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                              {campaign.objective} • {campaign.status}
+                            </div>
+                          </div>
+                          <div className="text-primary">
+                            View Health →
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           )}
 
           {/* Optimization View */}
