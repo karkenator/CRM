@@ -334,11 +334,13 @@ const CampaignHealthDashboard: React.FC<CampaignHealthProps> = ({ agentId, campa
 
 function getCategoryIcon(category: string): string {
   const icons: Record<string, string> = {
+    'Conversion Rate': '🎯',
+    'Conversion Funnel': '🔄',
     'Creative Fatigue': '🎨',
     'Budget Allocation': '💰',
     'Scaling': '📈',
-    'Learning Phase': '🎯',
-    'Creative Refresh': '🔄',
+    'Learning Phase': '🎓',
+    'Creative Refresh': '✨',
     'Audience Overlap': '👥',
     'Ad Scheduling': '⏰',
   };

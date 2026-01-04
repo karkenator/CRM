@@ -51,6 +51,8 @@ export interface CampaignAnalysis {
     average_cost_per_conversion: number;
     average_roas: number;
   };
+  health_score: number;
+  health_status: string;
   performance_insights: string[];
   optimization_opportunities: OptimizationSuggestion[];
   underperforming_ad_sets: any[];
@@ -65,6 +67,8 @@ export interface OptimizationSuggestion {
   description: string;
   affected_ad_sets: string[];
   potential_savings?: number;
+  expected_conversion_increase?: number | string;
+  conversion_rate_impact?: string;
   suggested_rule?: GeneratedRule;
 }
 
@@ -196,36 +200,71 @@ Return a JSON object with this structure:
 Return ONLY valid JSON, no additional text.`;
 }
 
-// Build the system prompt for campaign analysis
+// Build the system prompt for campaign analysis - FOCUSED ON CONVERSION RATE OPTIMIZATION
 function buildAnalysisPrompt(): string {
-  return `You are an expert Meta Ads analyst. Analyze campaign performance data and provide actionable insights.
+  return `You are an expert Meta Ads analyst specializing in CONVERSION RATE OPTIMIZATION. Your primary goal is to maximize the number of conversions and improve conversion rates across all campaigns.
 
-Your analysis should include:
-1. Performance summary with key metrics
-2. Identification of underperforming ad sets (high cost, low conversions)
-3. Identification of top performing ad sets
-4. Specific optimization opportunities with suggested rules
-5. Budget allocation recommendations
-6. Trend analysis
+🎯 PRIMARY FOCUS: Boosting Conversion Rate
 
-For each optimization opportunity, suggest a specific rule that can be applied automatically.
+Your analysis should prioritize strategies that directly increase conversions:
+
+1. **Conversion Rate Analysis** (HIGHEST PRIORITY)
+   - Identify ad sets with low conversion rates despite good engagement (high CTR but low conversions)
+   - Find conversion bottlenecks in the funnel (clicks but no purchases)
+   - Detect targeting misalignment (wrong audience for conversion goals)
+   - Spot creative-conversion mismatches (engaging ads that don't convert)
+
+2. **High-Converting Audience Identification**
+   - Identify demographics, interests, or behaviors with highest conversion rates
+   - Find ad sets ready for scaling that have proven conversion success
+   - Recommend audience expansion for high-converting segments
+
+3. **Conversion-Focused Budget Allocation**
+   - Reallocate budget from low-converting to high-converting ad sets
+   - Recommend increased investment in proven conversion drivers
+   - Identify wasted spend on engagement without conversions
+
+4. **Creative & Messaging for Conversions**
+   - Analyze which ad formats drive the most conversions (not just clicks)
+   - Identify creative fatigue affecting conversion rates
+   - Recommend testing angles that drive purchase intent
+
+5. **Optimization Opportunities** - Ranked by conversion impact:
+   - Actions that will increase total conversions
+   - Improvements to cost-per-conversion
+   - Strategies to move users from click to purchase
+   - A/B test recommendations focused on conversion rate
+
+6. **Conversion Funnel Optimization**
+   - Landing page performance signals
+   - Post-click conversion rate analysis
+   - Add-to-cart to purchase conversion analysis
+
+For each opportunity, estimate:
+- Expected conversion rate improvement (%)
+- Potential increase in total conversions
+- Impact on cost-per-conversion
 
 Return a JSON object with this structure:
 {
-  "performance_insights": ["insight1", "insight2", ...],
+  "performance_insights": ["insight1 focused on conversions", "insight2", ...],
   "optimization_opportunities": [
     {
       "type": "pause|activate|budget_adjust|targeting|creative|bidding",
       "priority": "high|medium|low",
-      "title": "Short title",
-      "description": "Detailed description",
+      "title": "Short title focused on conversion improvement",
+      "description": "How this will boost conversion rate",
       "affected_ad_sets": ["ad_set_id1", ...],
       "potential_savings": number_or_null,
+      "expected_conversion_increase": number_or_percentage,
+      "conversion_rate_impact": "describe the impact on conversion rate",
       "suggested_rule": { rule_object_or_null }
     }
   ],
-  "budget_recommendations": "Text recommendations for budget",
-  "summary_text": "Overall campaign health summary"
+  "conversion_funnel_insights": "Analysis of conversion funnel performance",
+  "high_converting_patterns": "Patterns identified in best performing converters",
+  "budget_recommendations": "Budget reallocation to maximize conversions",
+  "summary_text": "Overall conversion performance summary"
 }`;
 }
 
@@ -429,11 +468,9 @@ export async function analyzeCampaign(
   ];
   
   return {
-    summary: {
-      ...summary,
-      health_score: healthAnalysis.score,
-      health_status: healthAnalysis.status,
-    },
+    summary,
+    health_score: healthAnalysis.score,
+    health_status: healthAnalysis.status,
     performance_insights: allInsights,
     optimization_opportunities: allOpportunities,
     underperforming_ad_sets: underperforming,
@@ -449,19 +486,78 @@ function generateResearchBasedInsights(
 ): string[] {
   const insights: string[] = [];
   
+  // PRIMARY FOCUS: Conversion Rate Metrics
+  const totalClicks = summary.total_clicks || 0;
+  const totalConversions = summary.total_conversions || 0;
+  const overallConversionRate = totalClicks > 0 ? (totalConversions / totalClicks) * 100 : 0;
+  
+  insights.push(`🎯 Conversion Rate Focus: ${overallConversionRate.toFixed(2)}% (${totalConversions} conversions from ${totalClicks} clicks)`);
+  
+  // Calculate conversion rate distribution
+  const adSetsWithConversions = adSetsData.filter(a => {
+    const metrics = a.performance_metrics || {};
+    const clicks = parseInt(metrics.clicks || 0);
+    const conversions = getConversions(metrics);
+    return clicks > 0 && conversions > 0;
+  });
+  
+  if (adSetsWithConversions.length > 0) {
+    const bestConversionRate = Math.max(...adSetsWithConversions.map(a => {
+      const clicks = parseInt(a.performance_metrics?.clicks || 0);
+      const conversions = getConversions(a.performance_metrics);
+      return clicks > 0 ? (conversions / clicks) * 100 : 0;
+    }));
+    
+    insights.push(`🏆 Best Converting Ad Set: ${bestConversionRate.toFixed(2)}% conversion rate - ${adSetsWithConversions.length} ad sets are generating conversions`);
+  } else {
+    insights.push(`⚠️ No ad sets have conversions yet - focus on fixing conversion tracking and landing pages`);
+  }
+  
   // Add health score insight
   insights.push(`📊 Campaign Health Score: ${healthAnalysis.score}/100 (${healthAnalysis.status.toUpperCase()})`);
   
-  // Budget allocation insights
-  const totalBudget = adSetsData.reduce((sum, a) => sum + parseFloat(a.daily_budget || a.lifetime_budget || 0), 0);
-  if (totalBudget > 0) {
-    insights.push(`💰 Total Daily Budget: $${totalBudget.toFixed(2)} across ${adSetsData.length} ad sets`);
+  // Conversion-focused critical warnings
+  const conversionInsights = healthAnalysis.insights.filter((i: any) => 
+    i.category === 'Conversion Rate' || i.category === 'Conversion Funnel'
+  );
+  if (conversionInsights.length > 0) {
+    const criticalConversion = conversionInsights.filter((i: any) => i.priority === 'critical' || i.priority === 'high').length;
+    insights.push(`🚨 ${criticalConversion} CRITICAL conversion issues detected - addressing these will directly boost conversion rates`);
   }
   
-  // Frequency insights
+  // Budget allocation insights - conversion focused
+  const totalBudget = adSetsData.reduce((sum, a) => sum + parseFloat(a.daily_budget || a.lifetime_budget || 0), 0);
+  if (totalBudget > 0) {
+    const budgetOnConverters = adSetsWithConversions.reduce((sum, a) => 
+      sum + parseFloat(a.daily_budget || a.lifetime_budget || 0), 0
+    );
+    const percentOnConverters = totalBudget > 0 ? (budgetOnConverters / totalBudget) * 100 : 0;
+    
+    insights.push(`💰 Budget Allocation: ${percentOnConverters.toFixed(0)}% of $${totalBudget.toFixed(2)} daily budget is on converting ad sets`);
+    
+    if (percentOnConverters < 60 && adSetsWithConversions.length > 0) {
+      insights.push(`⚠️ OPPORTUNITY: Shift more budget to proven converters to maximize total conversions`);
+    }
+  }
+  
+  // High engagement, low conversion detection
+  const highEngagementLowConversion = adSetsData.filter(a => {
+    const metrics = a.performance_metrics || {};
+    const ctr = parseFloat(metrics.ctr || 0);
+    const clicks = parseInt(metrics.clicks || 0);
+    const conversions = getConversions(metrics);
+    const conversionRate = clicks > 0 ? (conversions / clicks) * 100 : 0;
+    return ctr > 1.5 && clicks > 20 && conversionRate < overallConversionRate * 0.5;
+  });
+  
+  if (highEngagementLowConversion.length > 0) {
+    insights.push(`⚠️ ${highEngagementLowConversion.length} ad set(s) have high engagement but poor conversion - fix these to unlock significant conversion growth`);
+  }
+  
+  // Frequency insights (impacts conversion rate)
   const highFrequency = adSetsData.filter(a => parseFloat(a.performance_metrics?.frequency || 0) > 1.7);
   if (highFrequency.length > 0) {
-    insights.push(`⚠️ ${highFrequency.length} ad set(s) showing signs of ad fatigue (frequency > 1.7)`);
+    insights.push(`⚠️ ${highFrequency.length} ad set(s) showing ad fatigue (frequency > 1.7) - this hurts conversion rates as users see the same ad too often`);
   }
   
   // Learning phase insights
@@ -471,13 +567,13 @@ function generateResearchBasedInsights(
     return daysActive > 7 && daysActive < 30;
   });
   if (inLearning.length > 0) {
-    insights.push(`🎯 ${inLearning.length} ad set(s) in learning phase - maintain consistent budget to optimize faster`);
+    insights.push(`🎯 ${inLearning.length} ad set(s) in learning phase - need 50 conversions/week to exit and optimize conversion delivery`);
   }
   
-  // Add critical warnings first
+  // High-priority action items
   const criticalInsights = healthAnalysis.insights.filter((i: any) => i.priority === 'critical' || i.priority === 'high');
   if (criticalInsights.length > 0) {
-    insights.push(`🚨 ${criticalInsights.length} high-priority optimization opportunity(ies) identified`);
+    insights.push(`🚨 ${criticalInsights.length} high-priority actions will boost conversions - implement these first`);
   }
   
   return insights;
@@ -524,30 +620,47 @@ async function getAIAnalysis(
     };
   });
 
-  const userPrompt = `Analyze this campaign performance data:
+  const userPrompt = `🎯 CONVERSION RATE OPTIMIZATION ANALYSIS - Analyze this campaign to maximize conversions:
 
 Campaign: ${campaignData.name}
 Status: ${campaignData.status}
 Objective: ${campaignData.objective || 'N/A'}
 
-Summary:
-- Total Ad Sets: ${summary.total_ad_sets}
-- Active: ${summary.active_ad_sets}, Paused: ${summary.paused_ad_sets}
-- Total Spend: $${summary.total_spend.toFixed(2)}
+🔍 KEY CONVERSION METRICS:
 - Total Conversions: ${summary.total_conversions}
-- Average Cost per Conversion: $${summary.average_cost_per_conversion.toFixed(2)}
+- Overall Conversion Rate: ${summary.total_clicks > 0 ? ((summary.total_conversions / summary.total_clicks) * 100).toFixed(2) : '0.00'}%
+- Cost per Conversion: $${summary.average_cost_per_conversion.toFixed(2)}
+- Click-to-Conversion Rate: ${summary.total_clicks > 0 ? ((summary.total_conversions / summary.total_clicks) * 100).toFixed(2) : '0.00'}%
+
+Campaign Overview:
+- Total Ad Sets: ${summary.total_ad_sets} (Active: ${summary.active_ad_sets}, Paused: ${summary.paused_ad_sets})
+- Total Spend: $${summary.total_spend.toFixed(2)}
+- Total Clicks: ${summary.total_clicks}
 - Average CTR: ${summary.average_ctr.toFixed(2)}%
 - Average CPC: $${summary.average_cpc.toFixed(2)}
 - ROAS: ${summary.average_roas.toFixed(2)}
 
-Statistics:
-- Median Spend: $${stats.medians.spend?.toFixed(2) || 'N/A'}
+Conversion Performance Distribution:
+- Median Cost per Conversion: $${stats.medians.cost_per_conversion?.toFixed(2) || 'N/A'}
 - 75th Percentile Cost per Conversion: $${stats.percentiles.cost_per_conversion?.[75]?.toFixed(2) || 'N/A'}
+- Best Performing Conversion Rate: ${adSetsSummary.length > 0 ? Math.max(...adSetsSummary.map((a: any) => {
+    const clicks = parseInt(a.clicks || 0);
+    const conversions = parseInt(a.conversions || 0);
+    return clicks > 0 ? ((conversions / clicks) * 100) : 0;
+  })).toFixed(2) : '0.00'}%
 
-Ad Sets (sample):
+Ad Sets Performance (sample):
 ${JSON.stringify(adSetsSummary, null, 2)}
 
-Provide actionable insights and optimization suggestions with specific rules that can be applied.`;
+🎯 YOUR TASK:
+1. Identify ad sets with HIGH ENGAGEMENT but LOW CONVERSIONS (wasted potential)
+2. Find HIGH-CONVERTING ad sets that should be scaled
+3. Detect conversion bottlenecks (good CTR → poor conversion rate)
+4. Recommend budget shifts to maximize total conversions
+5. Suggest targeting/creative changes to improve conversion rates
+6. Provide specific, actionable rules to boost conversions
+
+Focus exclusively on strategies that will INCREASE the number of conversions and IMPROVE conversion rates.`;
 
   const response = await axios.post(
     'https://api.openai.com/v1/chat/completions',
@@ -584,27 +697,48 @@ function getConversions(metrics: any): number {
 function generateBasicInsights(summary: any, underperforming: any[], topPerforming: any[]): string[] {
   const insights: string[] = [];
 
+  // PRIMARY FOCUS: Conversion Rate Insights
+  const overallConversionRate = summary.total_clicks > 0 
+    ? (summary.total_conversions / summary.total_clicks) * 100 
+    : 0;
+
   if (summary.total_conversions === 0 && summary.total_spend > 0) {
-    insights.push(`⚠️ No conversions recorded despite $${summary.total_spend.toFixed(2)} in spend. Consider reviewing targeting or creative.`);
+    insights.push(`🚨 CRITICAL: Zero conversions despite $${summary.total_spend.toFixed(2)} in spend and ${summary.total_clicks} clicks. This is a complete conversion failure - check tracking, landing pages, and offer alignment immediately.`);
+  } else if (summary.total_conversions > 0) {
+    insights.push(`📊 Current Conversion Rate: ${overallConversionRate.toFixed(2)}% (${summary.total_conversions} conversions from ${summary.total_clicks} clicks). Industry average is 2-5%.`);
+  }
+
+  // Identify high engagement but low conversion
+  if (summary.average_ctr > 1.5 && overallConversionRate < 1.5) {
+    insights.push(`⚠️ High engagement (${summary.average_ctr.toFixed(2)}% CTR) but low conversion rate (${overallConversionRate.toFixed(2)}%). Your ads are attracting clicks but not converting - review landing page alignment and offer strength.`);
   }
 
   if (underperforming.length > 0) {
-    insights.push(`📉 Found ${underperforming.length} underperforming ad sets with high spend and low/no conversions.`);
+    insights.push(`📉 ${underperforming.length} ad sets are draining budget without generating conversions. Pausing these and reallocating budget to high-converters could significantly boost total conversions.`);
   }
 
   if (topPerforming.length > 0) {
     const bestCPC = topPerforming[0].performance_metrics?.spend / getConversions(topPerforming[0].performance_metrics);
-    insights.push(`📈 Top performer has a cost per conversion of $${bestCPC?.toFixed(2) || 'N/A'}.`);
+    const bestClicks = parseInt(topPerforming[0].performance_metrics?.clicks || 0);
+    const bestConversions = getConversions(topPerforming[0].performance_metrics);
+    const bestConversionRate = bestClicks > 0 ? (bestConversions / bestClicks) * 100 : 0;
+    
+    insights.push(`🎯 Top converter: ${bestConversionRate.toFixed(2)}% conversion rate at $${bestCPC?.toFixed(2) || 'N/A'} cost per conversion. Scale this winning formula to maximize conversions.`);
   }
 
   if (summary.average_ctr < 1) {
-    insights.push(`📊 Average CTR is below 1%. Consider testing new ad creatives or audiences.`);
+    insights.push(`📊 Low CTR (${summary.average_ctr.toFixed(2)}%) means you're not even getting users to click. Test more compelling ad copy, visuals, and value propositions to drive traffic that can convert.`);
   }
 
   if (summary.average_roas > 0 && summary.average_roas < 1) {
-    insights.push(`💰 ROAS is below 1.0, meaning you're spending more than you're earning. Optimization needed.`);
+    insights.push(`💰 ROAS ${summary.average_roas.toFixed(2)} means you're losing money. Focus on conversion rate optimization: improve landing pages, test higher-intent audiences, and strengthen your offer.`);
   } else if (summary.average_roas >= 3) {
-    insights.push(`🎯 Excellent ROAS of ${summary.average_roas.toFixed(2)}! Consider scaling successful ad sets.`);
+    insights.push(`✅ Strong ROAS of ${summary.average_roas.toFixed(2)}! You have a profitable conversion funnel - now scale your best-performing ad sets to multiply conversions.`);
+  }
+
+  // Conversion cost insights
+  if (summary.average_cost_per_conversion > 0) {
+    insights.push(`💵 Average cost per conversion: $${summary.average_cost_per_conversion.toFixed(2)}. Lowering this by improving conversion rates will make every dollar more productive.`);
   }
 
   return insights;
@@ -613,53 +747,86 @@ function generateBasicInsights(summary: any, underperforming: any[], topPerformi
 function generateBasicOptimizations(underperforming: any[], summary: any): OptimizationSuggestion[] {
   const suggestions: OptimizationSuggestion[] = [];
 
+  // Focus on conversion rate optimization
   if (underperforming.length > 0) {
+    const totalWastedSpend = underperforming.reduce((sum, a) => sum + parseFloat(a.performance_metrics?.spend || 0), 0);
+    const potentialConversions = Math.floor(totalWastedSpend / (summary.average_cost_per_conversion || 50));
+    
     suggestions.push({
       type: 'pause',
       priority: 'high',
-      title: 'Pause Underperforming Ad Sets',
-      description: `${underperforming.length} ad sets have high spend with little to no conversions. Pausing them could save budget for better performers.`,
+      title: '🎯 Eliminate Conversion Killers - Pause Non-Converting Ad Sets',
+      description: `${underperforming.length} ad sets have spent $${totalWastedSpend.toFixed(2)} with minimal/no conversions. This wasted budget could have generated an estimated ${potentialConversions} conversions if allocated to high-performing ad sets. Pausing these immediately will boost your conversion efficiency.`,
       affected_ad_sets: underperforming.map(a => a.id),
-      potential_savings: underperforming.reduce((sum, a) => sum + parseFloat(a.performance_metrics?.spend || 0), 0),
+      potential_savings: totalWastedSpend,
+      expected_conversion_increase: potentialConversions,
+      conversion_rate_impact: `Redirecting budget to proven converters could increase total conversions by ${potentialConversions}`,
       suggested_rule: {
-        rule_name: 'Pause High-Spend Zero-Conversion Ad Sets',
-        description: 'Automatically pause ad sets spending money without generating conversions',
+        rule_name: 'Auto-Pause Zero-Conversion Budget Drains',
+        description: 'Automatically pause ad sets wasting spend without conversions',
         filter_config: {
           conditions: [
-            { field: 'spend', operator: 'greater_than', value: 10 },
+            { field: 'spend', operator: 'greater_than', value: 15 },
             { field: 'conversions', operator: 'equals', value: 0 },
+            { field: 'clicks', operator: 'greater_than', value: 5 },
           ],
           logical_operator: 'AND',
         },
         action: { type: 'PAUSE' },
-        explanation: 'Pauses ad sets that have spent over $10 without any conversions',
+        explanation: 'Pauses ad sets that spent >$15 and got clicks but zero conversions (conversion failure, not traffic problem)',
       },
     });
   }
 
   if (summary.average_cost_per_conversion > 0) {
-    const threshold = summary.average_cost_per_conversion * 2;
+    const threshold = summary.average_cost_per_conversion * 2.5;
     suggestions.push({
       type: 'pause',
-      priority: 'medium',
-      title: 'Pause High Cost-Per-Conversion Ad Sets',
-      description: `Pause ad sets where cost per conversion exceeds 2x the average ($${threshold.toFixed(2)})`,
+      priority: 'high',
+      title: '💰 Reduce Cost Per Conversion - Pause Expensive Converters',
+      description: `Some ad sets are converting but at 2.5x the average cost ($${threshold.toFixed(2)}+). These inefficient converters drain budget that could generate MORE conversions in better-performing sets. Pausing them improves overall conversion rate and reduces average cost per conversion.`,
       affected_ad_sets: [],
+      conversion_rate_impact: 'Reallocating this budget to efficient converters will increase total conversions by 30-50%',
       suggested_rule: {
-        rule_name: 'Pause Above-Average Cost Ad Sets',
-        description: 'Pause ad sets with cost per conversion above campaign average',
+        rule_name: 'Pause Inefficient Expensive Converters',
+        description: 'Pause ad sets with conversion costs far above average',
         filter_config: {
           conditions: [
-            { field: 'cost_per_conversion', operator: 'above_average', value: null },
-            { field: 'spend', operator: 'greater_than', value: 5 },
+            { field: 'cost_per_conversion', operator: 'above_percentile', value: 75 },
+            { field: 'spend', operator: 'greater_than', value: 20 },
           ],
           logical_operator: 'AND',
         },
         action: { type: 'PAUSE' },
-        explanation: 'Uses statistical comparison to pause ad sets performing worse than average',
+        explanation: 'Pauses ad sets in the worst 25% for conversion efficiency, freeing budget for top performers',
       },
     });
   }
+
+  // Add recommendation to scale high converters
+  suggestions.push({
+    type: 'budget_adjust',
+    priority: 'high',
+    title: '📈 Maximize Conversions - Scale Your Best Converters',
+    description: 'Identify ad sets with the highest conversion rates and lowest cost per conversion. These are proven winners. Increasing their budgets by 15-20% every 3-4 days will multiply your total conversions while maintaining efficiency.',
+    affected_ad_sets: [],
+    expected_conversion_increase: '25-40%',
+    conversion_rate_impact: 'Scaling proven converters is the fastest way to increase total conversions without risk',
+    suggested_rule: {
+      rule_name: 'Auto-Identify Scale-Ready High Converters',
+      description: 'Flag ad sets ready for scaling based on conversion performance',
+      filter_config: {
+        conditions: [
+          { field: 'conversions', operator: 'greater_than', value: 8 },
+          { field: 'cost_per_conversion', operator: 'below_percentile', value: 50 },
+          { field: 'spend', operator: 'greater_than', value: 20 },
+        ],
+        logical_operator: 'AND',
+      },
+      action: { type: 'ACTIVATE' },
+      explanation: 'Identifies top 50% converters with proven track record (8+ conversions) ready for budget increase',
+    },
+  });
 
   return suggestions;
 }

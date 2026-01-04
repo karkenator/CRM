@@ -301,12 +301,226 @@ export function analyzeTimeBasedPatterns(adSets: any[], hourlyData?: any): Optim
 }
 
 /**
+ * Analyze conversion rate optimization opportunities
+ * Focus: Maximize conversions and improve conversion rates
+ */
+export function analyzeConversionRateOptimization(adSets: any[]): OptimizationInsight[] {
+  const insights: OptimizationInsight[] = [];
+  
+  // Calculate conversion rates for all ad sets
+  const adSetsWithConversionData = adSets.map(adSet => {
+    const metrics = adSet.performance_metrics || {};
+    const clicks = parseInt(metrics.clicks || 0);
+    const conversions = getConversions(metrics);
+    const spend = parseFloat(metrics.spend || 0);
+    const conversionRate = clicks > 0 ? (conversions / clicks) * 100 : 0;
+    const ctr = parseFloat(metrics.ctr || 0);
+    
+    return {
+      ...adSet,
+      clicks,
+      conversions,
+      conversionRate,
+      ctr,
+      spend,
+    };
+  });
+  
+  // Find the average conversion rate
+  const totalClicks = adSetsWithConversionData.reduce((sum, a) => sum + a.clicks, 0);
+  const totalConversions = adSetsWithConversionData.reduce((sum, a) => sum + a.conversions, 0);
+  const averageConversionRate = totalClicks > 0 ? (totalConversions / totalClicks) * 100 : 0;
+  
+  // 1. HIGH ENGAGEMENT, LOW CONVERSION - Critical opportunity
+  for (const adSet of adSetsWithConversionData) {
+    if (adSet.clicks > 20 && adSet.ctr > 1.5 && adSet.conversionRate < averageConversionRate * 0.5) {
+      insights.push({
+        type: 'warning',
+        priority: 'critical',
+        category: 'Conversion Rate',
+        title: `High Engagement, Low Conversions: ${adSet.name}`,
+        description: `This ad set has excellent engagement (${adSet.ctr.toFixed(2)}% CTR, ${adSet.clicks} clicks) but poor conversion rate (${adSet.conversionRate.toFixed(2)}% vs ${averageConversionRate.toFixed(2)}% average). This indicates a disconnect between ad promise and landing page/offer.`,
+        impact: 'Wasting high-quality traffic due to conversion bottleneck. Fixing this could dramatically increase total conversions.',
+        recommendation: 'IMMEDIATE ACTION: 1) Review landing page alignment with ad message, 2) Check if offer/pricing is competitive, 3) Test clearer CTAs, 4) Verify targeting matches purchase intent, 5) Consider retargeting these engaged users with different offers.',
+        affected_entities: [adSet.id],
+        estimated_revenue_increase: adSet.clicks * (averageConversionRate / 100) * 50, // Estimate $50 per conversion
+        confidence: 90,
+      });
+    }
+  }
+  
+  // 2. HIGH-CONVERTING AD SETS READY FOR SCALING
+  const highConverters = adSetsWithConversionData.filter(a => 
+    a.conversions > 5 && 
+    a.conversionRate > averageConversionRate * 1.5 &&
+    a.spend > 10
+  );
+  
+  for (const adSet of highConverters) {
+    const currentBudget = parseFloat(adSet.daily_budget || adSet.lifetime_budget || 0);
+    if (currentBudget > 0) {
+      const estimatedNewConversions = (currentBudget * 0.2 / adSet.spend) * adSet.conversions;
+      
+      insights.push({
+        type: 'opportunity',
+        priority: 'high',
+        category: 'Conversion Rate',
+        title: `Scale High-Converting Winner: ${adSet.name}`,
+        description: `Exceptional conversion rate of ${adSet.conversionRate.toFixed(2)}% (${adSet.conversions} conversions). This is ${((adSet.conversionRate / averageConversionRate - 1) * 100).toFixed(0)}% better than average.`,
+        impact: `This ad set has proven conversion success. Scaling it could add an estimated ${estimatedNewConversions.toFixed(0)} more conversions.`,
+        recommendation: `Increase budget by 20% (from $${currentBudget.toFixed(2)} to $${(currentBudget * 1.2).toFixed(2)}) to capture more conversions while maintaining this excellent conversion rate. Wait 3-4 days before next increase.`,
+        affected_entities: [adSet.id],
+        estimated_revenue_increase: estimatedNewConversions * 50,
+        confidence: 85,
+      });
+    }
+  }
+  
+  // 3. LOW-CONVERTING AD SETS DRAINING BUDGET
+  for (const adSet of adSetsWithConversionData) {
+    if (adSet.spend > 20 && adSet.clicks > 10 && adSet.conversionRate < averageConversionRate * 0.3) {
+      insights.push({
+        type: 'warning',
+        priority: 'high',
+        category: 'Conversion Rate',
+        title: `Poor Conversion Rate: ${adSet.name}`,
+        description: `Conversion rate of ${adSet.conversionRate.toFixed(2)}% is significantly below average (${averageConversionRate.toFixed(2)}%). Spent $${adSet.spend.toFixed(2)} with minimal conversions.`,
+        impact: 'Budget is being wasted on traffic that doesn\'t convert. These funds could generate more conversions in better-performing ad sets.',
+        recommendation: 'Pause this ad set and reallocate budget to high-converting ad sets. If you want to salvage it: 1) Completely refresh creative, 2) Narrow targeting to high-intent audiences, 3) Test different landing pages.',
+        affected_entities: [adSet.id],
+        estimated_savings: adSet.spend * 0.5,
+        confidence: 80,
+      });
+    }
+  }
+  
+  // 4. ZERO CONVERSIONS WITH SIGNIFICANT SPEND
+  for (const adSet of adSetsWithConversionData) {
+    if (adSet.spend > 30 && adSet.conversions === 0 && adSet.clicks > 0) {
+      insights.push({
+        type: 'warning',
+        priority: 'critical',
+        category: 'Conversion Rate',
+        title: `Zero Conversions Despite Spend: ${adSet.name}`,
+        description: `Spent $${adSet.spend.toFixed(2)} and generated ${adSet.clicks} clicks but ZERO conversions. This is a complete conversion failure.`,
+        impact: 'Total waste of ad spend. This budget could be generating conversions in better-targeted campaigns.',
+        recommendation: 'PAUSE IMMEDIATELY. This ad set has fundamental issues: wrong audience, poor offer match, broken tracking, or ineffective landing page. Do not resume until root cause is identified and fixed.',
+        affected_entities: [adSet.id],
+        estimated_savings: adSet.spend,
+        confidence: 95,
+      });
+    }
+  }
+  
+  // 5. IDENTIFY CONVERSION RATE TRENDS
+  const recentAdSets = adSetsWithConversionData.filter(a => {
+    const created = new Date(a.created_time);
+    const daysOld = (Date.now() - created.getTime()) / (1000 * 60 * 60 * 24);
+    return daysOld < 7;
+  });
+  
+  if (recentAdSets.length > 2) {
+    const recentConversionRate = recentAdSets.reduce((sum, a) => sum + a.conversionRate, 0) / recentAdSets.length;
+    const olderAdSets = adSetsWithConversionData.filter(a => {
+      const created = new Date(a.created_time);
+      const daysOld = (Date.now() - created.getTime()) / (1000 * 60 * 60 * 24);
+      return daysOld >= 7;
+    });
+    const olderConversionRate = olderAdSets.length > 0 
+      ? olderAdSets.reduce((sum, a) => sum + a.conversionRate, 0) / olderAdSets.length 
+      : 0;
+    
+    if (recentConversionRate < olderConversionRate * 0.7) {
+      insights.push({
+        type: 'warning',
+        priority: 'high',
+        category: 'Conversion Rate',
+        title: 'Declining Conversion Rate Trend',
+        description: `Recent ad sets (last 7 days) have ${recentConversionRate.toFixed(2)}% conversion rate vs ${olderConversionRate.toFixed(2)}% for older sets. Conversion performance is deteriorating.`,
+        impact: 'New campaigns are less effective at converting. This trend will reduce overall profitability.',
+        recommendation: 'Analyze what changed: 1) Review recent targeting changes, 2) Compare new vs old creatives, 3) Check for seasonal factors, 4) Test returning to proven targeting/creative strategies, 5) Consider market saturation in current audiences.',
+        affected_entities: recentAdSets.map(a => a.id),
+        estimated_savings: 0,
+        confidence: 70,
+      });
+    }
+  }
+  
+  return insights;
+}
+
+/**
+ * Analyze post-click conversion funnel
+ * Identify where users drop off after clicking ads
+ */
+export function analyzeConversionFunnel(adSets: any[]): OptimizationInsight[] {
+  const insights: OptimizationInsight[] = [];
+  
+  for (const adSet of adSets) {
+    const metrics = adSet.performance_metrics || {};
+    const clicks = parseInt(metrics.clicks || 0);
+    const conversions = getConversions(metrics);
+    const spend = parseFloat(metrics.spend || 0);
+    
+    // Look for "add to cart" or "initiate checkout" actions if available
+    let addToCarts = 0;
+    let initiateCheckouts = 0;
+    
+    if (metrics.actions && Array.isArray(metrics.actions)) {
+      const addToCartAction = metrics.actions.find((a: any) => a.action_type === 'add_to_cart');
+      const checkoutAction = metrics.actions.find((a: any) => a.action_type === 'initiate_checkout');
+      
+      addToCarts = addToCartAction ? parseInt(addToCartAction.value || 0) : 0;
+      initiateCheckouts = checkoutAction ? parseInt(checkoutAction.value || 0) : 0;
+    }
+    
+    // Analyze funnel drop-offs
+    if (clicks > 20 && addToCarts > 5 && conversions < addToCarts * 0.3) {
+      insights.push({
+        type: 'opportunity',
+        priority: 'high',
+        category: 'Conversion Funnel',
+        title: `High Cart Abandonment: ${adSet.name}`,
+        description: `${addToCarts} users added to cart but only ${conversions} converted (${((conversions / addToCarts) * 100).toFixed(0)}% cart conversion rate). Major drop-off at checkout.`,
+        impact: 'Losing high-intent customers at the final step. These are warm leads ready to buy.',
+        recommendation: 'URGENT: 1) Set up cart abandonment retargeting, 2) Review checkout process for friction (long forms, unexpected costs, payment issues), 3) Test offering incentives (free shipping, discount for completing purchase), 4) Ensure mobile checkout is optimized.',
+        affected_entities: [adSet.id],
+        estimated_revenue_increase: (addToCarts - conversions) * 0.3 * 50, // 30% recovery rate
+        confidence: 85,
+      });
+    }
+    
+    if (clicks > 30 && conversions === 0 && spend > 20) {
+      insights.push({
+        type: 'warning',
+        priority: 'critical',
+        category: 'Conversion Funnel',
+        title: `Complete Funnel Breakdown: ${adSet.name}`,
+        description: `${clicks} clicks but zero conversions. Users are clicking but not taking any conversion action.`,
+        impact: 'Fundamental conversion problem. Either tracking is broken, landing page is ineffective, or audience has no purchase intent.',
+        recommendation: 'IMMEDIATE ACTIONS: 1) Verify conversion tracking is working, 2) Test landing page with A/B test tool, 3) Review audience targeting for purchase intent, 4) Compare landing page on mobile vs desktop, 5) Pause if issues persist after 48 hours.',
+        affected_entities: [adSet.id],
+        estimated_savings: spend,
+        confidence: 90,
+      });
+    }
+  }
+  
+  return insights;
+}
+
+/**
  * Calculate overall campaign health score
+ * UPDATED: Prioritizes conversion rate optimization
  */
 export function calculateCampaignHealth(adSets: any[]): CampaignHealth {
   const allInsights: OptimizationInsight[] = [];
   
-  // Run all analysis functions
+  // Run all analysis functions - CONVERSION RATE ANALYSIS FIRST (HIGHEST PRIORITY)
+  allInsights.push(...analyzeConversionRateOptimization(adSets));
+  allInsights.push(...analyzeConversionFunnel(adSets));
+  
+  // Then run supporting analysis functions
   allInsights.push(...analyzeAdFatigue(adSets));
   allInsights.push(...analyzeBudgetAllocation(adSets, calculateTotalBudget(adSets)));
   allInsights.push(...analyzeScalingOpportunities(adSets));
@@ -315,12 +529,16 @@ export function calculateCampaignHealth(adSets: any[]): CampaignHealth {
   allInsights.push(...analyzeAudienceOverlap(adSets));
   allInsights.push(...analyzeTimeBasedPatterns(adSets));
   
-  // Calculate health score
+  // Calculate health score - WEIGHTED HEAVILY ON CONVERSION ISSUES
   let score = 100;
   
   for (const insight of allInsights) {
     if (insight.type === 'warning') {
-      score -= insight.priority === 'critical' ? 20 : insight.priority === 'high' ? 12 : 6;
+      // Conversion-related warnings have DOUBLE impact on health score
+      const isConversionIssue = insight.category === 'Conversion Rate' || insight.category === 'Conversion Funnel';
+      const baseDeduction = insight.priority === 'critical' ? 20 : insight.priority === 'high' ? 12 : 6;
+      const deduction = isConversionIssue ? baseDeduction * 1.5 : baseDeduction;
+      score -= deduction;
     }
   }
   
@@ -330,14 +548,23 @@ export function calculateCampaignHealth(adSets: any[]): CampaignHealth {
                  score >= 60 ? 'good' : 
                  score >= 40 ? 'needs_attention' : 'critical';
   
-  // Sort insights by priority and estimated impact
+  // Sort insights - CONVERSION RATE INSIGHTS ALWAYS FIRST
   allInsights.sort((a, b) => {
+    // Conversion insights always come first
+    const aIsConversion = a.category === 'Conversion Rate' || a.category === 'Conversion Funnel';
+    const bIsConversion = b.category === 'Conversion Rate' || b.category === 'Conversion Funnel';
+    
+    if (aIsConversion && !bIsConversion) return -1;
+    if (!aIsConversion && bIsConversion) return 1;
+    
+    // Then sort by priority
     const priorityWeight = { critical: 4, high: 3, medium: 2, low: 1 };
     const aPriority = priorityWeight[a.priority] || 0;
     const bPriority = priorityWeight[b.priority] || 0;
     
     if (aPriority !== bPriority) return bPriority - aPriority;
     
+    // Finally by estimated impact
     const aImpact = (a.estimated_savings || 0) + (a.estimated_revenue_increase || 0);
     const bImpact = (b.estimated_savings || 0) + (b.estimated_revenue_increase || 0);
     
