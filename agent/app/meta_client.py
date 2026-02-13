@@ -89,41 +89,107 @@ class MetaAPIClient:
         response = self._make_request(f"{endpoint}?{'&'.join([f'{k}={v}' for k, v in params.items()])}")
         return response.get("data", [{}])[0] if response.get("data") else {}
     
-    def get_ad_sets(self, campaign_id: str, limit: int = 25) -> List[Dict[str, Any]]:
-        """Get ad sets for a specific campaign"""
-        endpoint = f"{campaign_id}/adsets"
+    def get_ad_sets(self, campaign_id: str, limit: int = 25, date_preset: str = "last_30d") -> List[Dict[str, Any]]:
+        """Get ad sets for a specific campaign with performance metrics
+
+        Args:
+            campaign_id: The campaign ID to fetch ad sets for
+            limit: Maximum number of ad sets to return
+            date_preset: Date range for insights (e.g., 'last_30d', 'last_7d')
+
+        Returns:
+            List of ad sets with their performance metrics
+        """
+        # Build the endpoint URL with access_token as query parameter (required by Meta API)
+        url = f"{self.base_url}/{campaign_id}/adsets"
+
+        # Include insights fields for performance metrics
+        fields = (
+            "id,name,status,effective_status,daily_budget,lifetime_budget,"
+            "optimization_goal,created_time,updated_time,targeting,bid_strategy,pacing_type,"
+            "insights.date_preset({date_preset}){{spend,impressions,clicks,ctr,cpc,cpm,reach,frequency,"
+            "actions,action_values,cost_per_action_type}}"
+        ).format(date_preset=date_preset)
+
         params = {
-            "limit": limit, 
-            "fields": "id,name,status,effective_status,daily_budget,lifetime_budget,optimization_goal,created_time,updated_time"
+            "access_token": self.access_token,
+            "limit": limit,
+            "fields": fields,
         }
-        response = self._make_request(f"{endpoint}?{'&'.join([f'{k}={v}' for k, v in params.items()])}")
-        ad_sets = response.get("data", [])
-        
-        # Handle pagination
-        while "paging" in response and "next" in response["paging"]:
-            try:
-                next_url = response["paging"]["next"]
-                if "?" in next_url:
-                    query_string = next_url.split("?")[1]
-                    response = self._make_request(f"{endpoint}?{query_string}")
-                    ad_sets.extend(response.get("data", []))
+
+        try:
+            response = requests.get(url, params=params, timeout=self.timeout)
+            response.raise_for_status()
+            data = response.json()
+            ad_sets = data.get("data", [])
+
+            # Normalize insights structure for each ad set
+            for ad_set in ad_sets:
+                if "insights" in ad_set:
+                    insights_data = ad_set["insights"]
+                    if isinstance(insights_data, dict) and "data" in insights_data:
+                        insights_list = insights_data["data"]
+                    elif isinstance(insights_data, list):
+                        insights_list = insights_data
+                    else:
+                        insights_list = []
+
+                    ad_set["performance_metrics"] = insights_list[0] if insights_list else {}
+                    del ad_set["insights"]
                 else:
+                    ad_set["performance_metrics"] = {}
+
+            # Handle pagination
+            while "paging" in data and "next" in data["paging"]:
+                try:
+                    next_url = data["paging"]["next"]
+                    response = requests.get(next_url, timeout=self.timeout)
+                    response.raise_for_status()
+                    data = response.json()
+
+                    # Normalize insights for paginated results
+                    for ad_set in data.get("data", []):
+                        if "insights" in ad_set:
+                            insights_data = ad_set["insights"]
+                            if isinstance(insights_data, dict) and "data" in insights_data:
+                                insights_list = insights_data["data"]
+                            elif isinstance(insights_data, list):
+                                insights_list = insights_data
+                            else:
+                                insights_list = []
+
+                            ad_set["performance_metrics"] = insights_list[0] if insights_list else {}
+                            del ad_set["insights"]
+                        else:
+                            ad_set["performance_metrics"] = {}
+
+                    ad_sets.extend(data.get("data", []))
+                except Exception as e:
+                    logger.warning(f"Failed to fetch next page of ad sets: {e}")
                     break
-            except Exception as e:
-                logger.warning(f"Failed to fetch next page of ad sets: {e}")
-                break
-        
-        return ad_sets
+
+            return ad_sets
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Failed to get ad sets for campaign {campaign_id}: {e}")
+            raise
     
     def get_ads(self, ad_set_id: str, limit: int = 25) -> List[Dict[str, Any]]:
         """Get ads for a specific ad set"""
-        endpoint = f"{ad_set_id}/ads"
+        url = f"{self.base_url}/{ad_set_id}/ads"
         params = {
+            "access_token": self.access_token,
             "limit": limit,
             "fields": "id,name,status,effective_status,creative,created_time,updated_time"
         }
-        response = self._make_request(f"{endpoint}?{'&'.join([f'{k}={v}' for k, v in params.items()])}")
-        return response.get("data", [])
+
+        try:
+            response = requests.get(url, params=params, timeout=self.timeout)
+            response.raise_for_status()
+            return response.json().get("data", [])
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Failed to get ads for ad set {ad_set_id}: {e}")
+            raise
     
     def create_campaign(self, name: str, objective: str, status: str = "PAUSED") -> Dict[str, Any]:
         """Create a new campaign"""
@@ -499,6 +565,191 @@ class MetaAPIClient:
         except Exception as e:
             logger.error(f"Failed to get ad comments: {e}")
             return []
+
+    def update_ad_set_budget(self, ad_set_id: str, daily_budget: int = None, lifetime_budget: int = None) -> Dict[str, Any]:
+        """Update the budget of an ad set (values in cents)
+
+        Args:
+            ad_set_id: The ID of the ad set to update
+            daily_budget: New daily budget in cents (optional)
+            lifetime_budget: New lifetime budget in cents (optional)
+
+        Returns:
+            Dict with the API response
+        """
+        url = f"{self.base_url}/{ad_set_id}"
+        data = {}
+
+        if daily_budget is not None:
+            data["daily_budget"] = daily_budget
+        if lifetime_budget is not None:
+            data["lifetime_budget"] = lifetime_budget
+
+        if not data:
+            raise ValueError("At least one budget type (daily_budget or lifetime_budget) must be provided")
+
+        try:
+            response = requests.post(
+                url,
+                headers={"Authorization": f"Bearer {self.access_token}"},
+                params={"access_token": self.access_token},
+                data=data,
+                timeout=self.timeout
+            )
+            response.raise_for_status()
+            return response.json()
+
+        except requests.exceptions.HTTPError as e:
+            error_msg = f"Meta API error updating ad set budget {ad_set_id}: {e}"
+            if hasattr(e, 'response') and e.response:
+                try:
+                    error_data = e.response.json()
+                    if 'error' in error_data:
+                        error_info = error_data['error']
+                        error_msg = f"Meta API Error {error_info.get('code', '')}: {error_info.get('message', str(e))}"
+                        logger.error(f"{error_msg} - Full response: {error_data}")
+                except:
+                    error_msg = f"{error_msg} - Response: {e.response.text}"
+            logger.error(error_msg)
+            raise
+        except requests.exceptions.RequestException as e:
+            logger.error(f"API request failed: {e}")
+            raise
+
+    def create_automated_rule(
+        self,
+        name: str,
+        evaluation_spec: Dict[str, Any],
+        execution_spec: Dict[str, Any],
+        schedule_spec: Dict[str, Any] = None,
+        status: str = "ENABLED"
+    ) -> Dict[str, Any]:
+        """Create an automated rule on Meta's servers
+
+        Meta Automated Rules use filters within evaluation_spec to scope which entities
+        the rule applies to. Required filters include:
+        - entity_type: "AD", "ADSET", or "CAMPAIGN"
+        - time_preset: "LAST_7D", "LAST_14D", "LAST_30D", "LIFETIME", etc.
+        - campaign.id or adset.id: with IN operator to scope to specific campaigns/ad sets
+
+        Args:
+            name: Rule name
+            evaluation_spec: Evaluation specification with filters (must include entity_type,
+                            time_preset, and campaign.id/adset.id scoping filters)
+            execution_spec: Execution specification with action type
+            schedule_spec: Schedule specification (optional, defaults to daily)
+            status: Rule status - ENABLED or DISABLED
+
+        Returns:
+            Dict with the created rule data including ID
+
+        Reference: https://developers.facebook.com/docs/marketing-api/reference/ad-rules-library/
+        """
+        url = f"{self.base_url}/act_{self.ad_account_id}/adrules_library"
+
+        # Default schedule: run daily
+        if schedule_spec is None:
+            schedule_spec = {
+                "schedule_type": "DAILY"
+            }
+
+        data = {
+            "access_token": self.access_token,
+            "name": name,
+            "evaluation_spec": json.dumps(evaluation_spec) if isinstance(evaluation_spec, dict) else evaluation_spec,
+            "execution_spec": json.dumps(execution_spec) if isinstance(execution_spec, dict) else execution_spec,
+            "schedule_spec": json.dumps(schedule_spec) if isinstance(schedule_spec, dict) else schedule_spec,
+            "status": status
+        }
+
+        try:
+            response = requests.post(url, data=data, timeout=self.timeout)
+            response.raise_for_status()
+            return response.json()
+
+        except requests.exceptions.HTTPError as e:
+            error_msg = f"Meta API error creating automated rule: {e}"
+            if hasattr(e, 'response') and e.response:
+                try:
+                    error_data = e.response.json()
+                    if 'error' in error_data:
+                        error_info = error_data['error']
+                        error_msg = f"Meta API Error {error_info.get('code', '')}: {error_info.get('message', str(e))}"
+                        logger.error(f"{error_msg} - Full response: {error_data}")
+                except:
+                    error_msg = f"{error_msg} - Response: {e.response.text}"
+            logger.error(error_msg)
+            raise
+        except requests.exceptions.RequestException as e:
+            logger.error(f"API request failed: {e}")
+            raise
+
+    def get_automated_rules(self, limit: int = 50) -> List[Dict[str, Any]]:
+        """Get all automated rules for the ad account"""
+        url = f"{self.base_url}/act_{self.ad_account_id}/adrules_library"
+        params = {
+            "access_token": self.access_token,
+            "fields": "id,name,status,evaluation_spec,execution_spec,schedule_spec,created_time,updated_time",
+            "limit": limit
+        }
+
+        try:
+            response = requests.get(url, params=params, timeout=self.timeout)
+            response.raise_for_status()
+            return response.json().get("data", [])
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Failed to get automated rules: {e}")
+            raise
+
+    def delete_automated_rule(self, rule_id: str) -> Dict[str, Any]:
+        """Delete an automated rule"""
+        url = f"{self.base_url}/{rule_id}"
+        params = {"access_token": self.access_token}
+
+        try:
+            response = requests.delete(url, params=params, timeout=self.timeout)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Failed to delete automated rule {rule_id}: {e}")
+            raise
+
+    def update_automated_rule_status(self, rule_id: str, status: str) -> Dict[str, Any]:
+        """Update the status of an automated rule (ENABLED/DISABLED)
+
+        Args:
+            rule_id: The ID of the rule to update
+            status: New status - 'ENABLED' or 'DISABLED'
+
+        Returns:
+            Dict with the API response
+        """
+        url = f"{self.base_url}/{rule_id}"
+        data = {
+            "access_token": self.access_token,
+            "status": status
+        }
+
+        try:
+            response = requests.post(url, data=data, timeout=self.timeout)
+            response.raise_for_status()
+            return response.json()
+
+        except requests.exceptions.HTTPError as e:
+            error_msg = f"Meta API error updating rule status: {e}"
+            if hasattr(e, 'response') and e.response:
+                try:
+                    error_data = e.response.json()
+                    if 'error' in error_data:
+                        error_info = error_data['error']
+                        error_msg = f"Meta API Error {error_info.get('code', '')}: {error_info.get('message', str(e))}"
+                except:
+                    error_msg = f"{error_msg} - Response: {e.response.text}"
+            logger.error(error_msg)
+            raise
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Failed to update automated rule status: {e}")
+            raise
 
     def test_connection(self) -> bool:
         """Test the connection to Meta's API"""

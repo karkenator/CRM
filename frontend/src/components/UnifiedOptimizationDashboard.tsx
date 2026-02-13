@@ -21,6 +21,12 @@ const UnifiedOptimizationDashboard: React.FC<UnifiedOptimizationDashboardProps> 
   onOpenAIChatbot,
 }) => {
   const [activeTab, setActiveTab] = useState<TabType>('insights');
+  const [rulesRefreshToken, setRulesRefreshToken] = useState(0);
+
+  const handleRuleCreated = () => {
+    // Increment refresh token to trigger rules list refresh
+    setRulesRefreshToken(prev => prev + 1);
+  };
 
   const tabs = [
     {
@@ -81,6 +87,7 @@ const UnifiedOptimizationDashboard: React.FC<UnifiedOptimizationDashboardProps> 
               agentId={agentId}
               campaignId={campaignId}
               campaignName={campaignName}
+              onRuleCreated={handleRuleCreated}
             />
           </div>
         )}
@@ -92,6 +99,7 @@ const UnifiedOptimizationDashboard: React.FC<UnifiedOptimizationDashboardProps> 
               agentId={agentId}
               campaignId={campaignId}
               campaignName={campaignName}
+              onRuleCreated={handleRuleCreated}
             />
           </div>
         )}
@@ -143,7 +151,7 @@ const UnifiedOptimizationDashboard: React.FC<UnifiedOptimizationDashboardProps> 
             <CampaignRules
               agentId={agentId}
               campaigns={campaigns}
-              refreshToken={0}
+              refreshToken={rulesRefreshToken}
             />
           </div>
         )}

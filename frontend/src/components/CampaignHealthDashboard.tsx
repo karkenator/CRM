@@ -1,10 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { apiService } from '../services/api';
+import { AdSetRuleCreate } from '../types';
+import { showToast } from './Toast';
 
 interface CampaignHealthProps {
   agentId: string;
   campaignId: string;
   campaignName: string;
+  onRuleCreated?: () => void;
 }
 
 interface OptimizationInsight {
@@ -15,16 +18,18 @@ interface OptimizationInsight {
   description: string;
   impact: string;
   recommendation: string;
+  affected_entities: string[]; // Ad set IDs
   estimated_savings?: number;
   estimated_revenue_increase?: number;
   confidence: number;
 }
 
-const CampaignHealthDashboard: React.FC<CampaignHealthProps> = ({ agentId, campaignId, campaignName }) => {
+const CampaignHealthDashboard: React.FC<CampaignHealthProps> = ({ agentId, campaignId, campaignName, onRuleCreated }) => {
   const [loading, setLoading] = useState(true);
   const [healthData, setHealthData] = useState<any>(null);
   const [error, setError] = useState('');
   const [selectedInsight, setSelectedInsight] = useState<OptimizationInsight | null>(null);
+  const [creatingRule, setCreatingRule] = useState(false);
 
   useEffect(() => {
     fetchHealthData();
@@ -92,6 +97,104 @@ const CampaignHealthDashboard: React.FC<CampaignHealthProps> = ({ agentId, campa
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);
+  };
+
+  const handleCreateRule = async (insight: OptimizationInsight) => {
+    if (!insight.affected_entities || insight.affected_entities.length === 0) {
+      showToast('No affected ad sets found for this insight', 'error');
+      return;
+    }
+
+    setCreatingRule(true);
+    try {
+      // Determine action type based on insight type and recommendation
+      const recommendation = insight.recommendation.toLowerCase();
+      const title = insight.title.toLowerCase();
+
+      // Determine action: pause for warnings/issues, activate for opportunities that suggest scaling
+      let actionType: 'PAUSE' | 'ACTIVATE' = 'PAUSE';
+      if (insight.type === 'opportunity' && (recommendation.includes('scale') || recommendation.includes('increase budget'))) {
+        actionType = 'ACTIVATE'; // For scaling opportunities, we keep them active
+      }
+      if (recommendation.includes('pause') || title.includes('zero conversion') || title.includes('poor conversion')) {
+        actionType = 'PAUSE';
+      }
+
+      // Create a descriptive rule name
+      const ruleName = `[AI] ${insight.title.substring(0, 50)}`;
+
+      // For each affected ad set, we need to execute the action directly
+      // Since the insight already identified specific ad sets, we execute immediately on those
+      let successCount = 0;
+      let failCount = 0;
+      const errors: string[] = [];
+
+      for (const adSetId of insight.affected_entities) {
+        try {
+          const status = actionType === 'PAUSE' ? 'PAUSED' : 'ACTIVE';
+          await apiService.updateAdSetStatus(agentId, adSetId, status);
+          successCount++;
+        } catch (err: any) {
+          failCount++;
+          errors.push(`${adSetId}: ${err.message}`);
+        }
+      }
+
+      // Also create a rule in CRM for tracking/history (with filter that matches by spending threshold)
+      // This rule will also be synced to Meta for ongoing monitoring
+      const filterConfig = {
+        conditions: [
+          {
+            field: 'spend',
+            operator: 'greater_than',
+            value: 0, // Will match ad sets with any spend
+          },
+        ],
+        logical_operator: 'AND' as const,
+      };
+
+      const ruleToCreate: AdSetRuleCreate = {
+        agent_id: agentId,
+        campaign_id: campaignId,
+        rule_name: ruleName,
+        description: `${insight.description}\n\nImpact: ${insight.impact}\n\nRecommendation: ${insight.recommendation}\n\nAffected Ad Sets: ${insight.affected_entities.length}`,
+        filter_config: filterConfig,
+        action: { type: actionType },
+        execution_mode: 'MANUAL',
+        execute_immediately: false, // Already executed above
+      };
+
+      const response = await apiService.createAdSetRule(ruleToCreate);
+      const result = response.data as any;
+
+      // Build success message
+      let successMessage = '';
+      if (successCount > 0) {
+        successMessage = `${actionType === 'PAUSE' ? 'Paused' : 'Activated'} ${successCount} ad set(s)!`;
+      }
+      if (failCount > 0) {
+        successMessage += ` ${failCount} failed.`;
+      }
+      if (result.meta_rule_result?.data?.id) {
+        successMessage += ' Rule synced to Meta.';
+      }
+
+      showToast(successMessage || 'Rule created', successCount > 0 ? 'success' : 'error');
+      setSelectedInsight(null);
+
+      // Refresh the health data to show updated status
+      fetchHealthData();
+
+      // Notify parent to refresh rules list
+      if (onRuleCreated) {
+        onRuleCreated();
+      }
+    } catch (err: any) {
+      const errorMessage = err.response?.data?.detail || err.message || 'Failed to create rule';
+      showToast(`Failed: ${errorMessage}`, 'error');
+    } finally {
+      setCreatingRule(false);
+    }
   };
 
   return (
@@ -217,6 +320,11 @@ const CampaignHealthDashboard: React.FC<CampaignHealthProps> = ({ agentId, campa
                           <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
                             {insight.description.substring(0, 100)}...
                           </div>
+                          {insight.affected_entities && insight.affected_entities.length > 0 && (
+                            <div className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                              {insight.affected_entities.length} ad set(s) affected
+                            </div>
+                          )}
                         </div>
                         <div className="text-right ml-4">
                           {insight.estimated_savings && (
@@ -311,17 +419,64 @@ const CampaignHealthDashboard: React.FC<CampaignHealthProps> = ({ agentId, campa
                 </div>
               </div>
 
+              {selectedInsight.affected_entities && selectedInsight.affected_entities.length > 0 && (
+                <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                  <p className="text-sm font-semibold text-blue-800 dark:text-blue-300 mb-2">
+                    Clicking "Apply Action" will:
+                  </p>
+                  <ul className="text-sm text-blue-700 dark:text-blue-400 list-disc list-inside space-y-1">
+                    <li>
+                      <strong>
+                        {selectedInsight.recommendation.toLowerCase().includes('pause') ||
+                         selectedInsight.title.toLowerCase().includes('zero conversion') ||
+                         selectedInsight.title.toLowerCase().includes('poor conversion')
+                          ? 'Pause'
+                          : 'Keep Active'
+                        }
+                      </strong> {selectedInsight.affected_entities.length} ad set(s) immediately
+                    </li>
+                    <li>Create a tracking rule in CRM and Meta Ads Manager</li>
+                    <li>The rule will appear in Custom Rules for future management</li>
+                  </ul>
+                  <p className="text-xs text-blue-600 dark:text-blue-400 mt-2">
+                    Ad Set IDs: {selectedInsight.affected_entities.slice(0, 3).join(', ')}
+                    {selectedInsight.affected_entities.length > 3 && ` +${selectedInsight.affected_entities.length - 3} more`}
+                  </p>
+                </div>
+              )}
+
+              {(!selectedInsight.affected_entities || selectedInsight.affected_entities.length === 0) && (
+                <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+                  <p className="text-sm text-yellow-800 dark:text-yellow-300">
+                    No specific ad sets identified for this insight. This is a general recommendation.
+                  </p>
+                </div>
+              )}
+
               <div className="mt-6 flex gap-3">
                 <button
                   onClick={() => setSelectedInsight(null)}
-                  className="flex-1 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg"
+                  disabled={creatingRule}
+                  className="flex-1 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg disabled:opacity-50"
                 >
                   Close
                 </button>
                 <button
-                  className="flex-1 px-4 py-2 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg"
+                  onClick={() => handleCreateRule(selectedInsight)}
+                  disabled={creatingRule || !selectedInsight.affected_entities || selectedInsight.affected_entities.length === 0}
+                  className="flex-1 px-4 py-2 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg disabled:opacity-50"
                 >
-                  Create Rule
+                  {creatingRule ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                      </svg>
+                      Applying...
+                    </span>
+                  ) : (
+                    `Apply Action (${selectedInsight.affected_entities?.length || 0} ad sets)`
+                  )}
                 </button>
               </div>
             </div>

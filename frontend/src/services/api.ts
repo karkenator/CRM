@@ -290,6 +290,32 @@ class ApiService {
       ...config,
     });
   }
+
+  async executeRecommendationAction(
+    agentId: string,
+    actionType: 'pause' | 'activate' | 'budget',
+    entityId: string,
+    actionParams?: { daily_budget?: number; lifetime_budget?: number }
+  ): Promise<{ data: any }> {
+    return this.api.post('/api/optimization-insights/execute-action', {
+      agent_id: agentId,
+      action_type: actionType,
+      entity_id: entityId,
+      action_params: actionParams,
+    });
+  }
+
+  async updateAdSetBudget(
+    agentId: string,
+    adsetId: string,
+    dailyBudget?: number,
+    lifetimeBudget?: number
+  ): Promise<{ data: any }> {
+    const params: any = {};
+    if (dailyBudget !== undefined) params.daily_budget = dailyBudget;
+    if (lifetimeBudget !== undefined) params.lifetime_budget = lifetimeBudget;
+    return this.api.put(`/meta/adsets/${adsetId}/budget?agent_id=${agentId}`, params);
+  }
 }
 
 export const apiService = new ApiService();

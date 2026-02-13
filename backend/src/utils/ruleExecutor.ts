@@ -2,6 +2,15 @@ import axios from 'axios';
 import { Agent } from '../models';
 import { config } from '../config';
 
+// Helper function for consistent conversion extraction from Meta actions array
+function getConversionsFromActions(actions: any[] | undefined): number {
+  if (!actions || !Array.isArray(actions)) return 0;
+  const purchase = actions.find((a: any) =>
+    a.action_type === 'purchase' || a.action_type === 'omni_purchase' || a.action_type === 'lead'
+  );
+  return purchase ? parseFloat(purchase.value || 0) : 0;
+}
+
 // All available operators
 export type Operator = 
   // Basic operators
@@ -321,23 +330,33 @@ function getFieldValue(adSet: any, field: string, timeWindow?: string): any {
     
     // Handle special computed metrics
     if (field === 'cost_per_conversion' || field === 'cost_per_action') {
-      const costPerAction = adSet.performance_metrics.cost_per_action;
-      if (costPerAction && Array.isArray(costPerAction) && costPerAction.length > 0) {
-        return parseFloat(costPerAction[0].value || 0);
+      // First try cost_per_action_type (what Meta actually returns)
+      const costPerActionType = adSet.performance_metrics.cost_per_action_type;
+      if (costPerActionType && Array.isArray(costPerActionType)) {
+        const purchaseCost = costPerActionType.find((c: any) =>
+          c.action_type === 'purchase' || c.action_type === 'omni_purchase'
+        );
+        if (purchaseCost) return parseFloat(purchaseCost.value || 0);
       }
-      return 0;
+      // Fallback: calculate from spend/conversions
+      const spend = parseFloat(adSet.performance_metrics.spend || 0);
+      const conversions = getConversionsFromActions(adSet.performance_metrics.actions);
+      return conversions > 0 ? spend / conversions : 0;
     }
 
     if (field === 'conversion_rate') {
-      const conversions = adSet.performance_metrics.actions?.[0]?.value || 0;
+      const conversions = getConversionsFromActions(adSet.performance_metrics.actions);
       const clicks = adSet.performance_metrics.clicks || 0;
-      return clicks > 0 ? (Number(conversions) / Number(clicks)) * 100 : 0;
+      return clicks > 0 ? (conversions / Number(clicks)) * 100 : 0;
     }
 
     if (field === 'conversions' || field === 'actions') {
       const actions = adSet.performance_metrics.actions;
-      if (actions && Array.isArray(actions) && actions.length > 0) {
-        return parseFloat(actions[0].value || 0);
+      if (actions && Array.isArray(actions)) {
+        const purchase = actions.find((a: any) =>
+          a.action_type === 'purchase' || a.action_type === 'omni_purchase' || a.action_type === 'lead'
+        );
+        return purchase ? parseFloat(purchase.value || 0) : 0;
       }
       return 0;
     }

@@ -134,6 +134,7 @@ export interface AdSetRule {
   execution_count: number;
   last_action?: string;
   last_matched_count?: number;
+  meta_rule_id?: string;  // ID of the synced rule on Meta's servers
   created_at: string;
   updated_at: string;
 }
@@ -148,6 +149,8 @@ export interface AdSetRuleCreate {
     type: 'PAUSE' | 'ACTIVATE';
   };
   execution_mode?: 'AUTO' | 'MANUAL';
+  execute_immediately?: boolean;  // Execute the rule right after creating (applies action to matching ad sets NOW)
+  // Note: Rules are ALWAYS created on both CRM and Meta simultaneously
 }
 
 export interface AdSetRuleUpdate {

@@ -1,10 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { apiService } from '../services/api';
+import { AdSetRuleCreate } from '../types';
+import { showToast } from './Toast';
 
 interface OptimizationInsightsProps {
   agentId: string;
   campaignId: string;
   campaignName: string;
+  onRuleCreated?: () => void;
 }
 
 interface OptimizationRecommendation {
@@ -28,6 +31,7 @@ const OptimizationInsightsDashboard: React.FC<OptimizationInsightsProps> = ({
   agentId,
   campaignId,
   campaignName,
+  onRuleCreated,
 }) => {
   const [loading, setLoading] = useState(false);
   const [insights, setInsights] = useState<any>(null);
@@ -37,6 +41,15 @@ const OptimizationInsightsDashboard: React.FC<OptimizationInsightsProps> = ({
   const [configuring, setConfiguring] = useState(false);
   const [targetCPA, setTargetCPA] = useState<string>('');
   const [targetROAS, setTargetROAS] = useState<string>('');
+  const [executingAction, setExecutingAction] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionSuccess, setActionSuccess] = useState<string | null>(null);
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [pendingAction, setPendingAction] = useState<{
+    recommendation: OptimizationRecommendation;
+    actionType: 'pause' | 'activate' | 'budget';
+    actionParams?: { daily_budget?: number; lifetime_budget?: number };
+  } | null>(null);
 
   useEffect(() => {
     runAnalysis();
@@ -82,15 +95,143 @@ const OptimizationInsightsDashboard: React.FC<OptimizationInsightsProps> = ({
       const config: any = {};
       if (targetCPA) config.target_cpa = parseFloat(targetCPA);
       if (targetROAS) config.target_roas = parseFloat(targetROAS);
-      
+
       await apiService.updateCampaignConfig(agentId, campaignId, config);
-      alert('Configuration saved successfully!');
+      setActionSuccess('Configuration saved successfully!');
+      setTimeout(() => setActionSuccess(null), 3000);
       runAnalysis(); // Re-run analysis with new config
     } catch (err: any) {
-      alert(err.response?.data?.detail || 'Failed to save configuration');
+      setActionError(err.response?.data?.detail || 'Failed to save configuration');
+      setTimeout(() => setActionError(null), 5000);
     } finally {
       setConfiguring(false);
     }
+  };
+
+  const parseActionFromEndpoint = (recommendation: OptimizationRecommendation): {
+    actionType: 'pause' | 'activate' | 'budget';
+    actionParams?: { daily_budget?: number; lifetime_budget?: number };
+  } | null => {
+    const endpoint = recommendation.action_endpoint;
+    if (!endpoint) return null;
+
+    if (endpoint.includes('pause') || endpoint.includes('PAUSED')) {
+      return { actionType: 'pause' };
+    } else if (endpoint.includes('activate') || endpoint.includes('ACTIVE')) {
+      return { actionType: 'activate' };
+    } else if (endpoint.includes('budget')) {
+      // Try to extract budget from recommendation message or use a default increase
+      const message = recommendation.message.toLowerCase();
+      let budgetChange: { daily_budget?: number; lifetime_budget?: number } = {};
+
+      // Check if message suggests increasing budget
+      if (message.includes('increase') || message.includes('scale')) {
+        // Default 20% increase - in production, extract from recommendation
+        budgetChange.daily_budget = undefined; // Will need to be filled by user
+      }
+
+      return { actionType: 'budget', actionParams: budgetChange };
+    }
+
+    // Default to pause for bleeding budget type recommendations
+    if (recommendation.type === 'budget_waste' || recommendation.type === 'cost_efficiency') {
+      return { actionType: 'pause' };
+    }
+
+    return null;
+  };
+
+  const handleTakeAction = (recommendation: OptimizationRecommendation) => {
+    const action = parseActionFromEndpoint(recommendation);
+    if (!action) {
+      setActionError('Unable to determine action type for this recommendation');
+      setTimeout(() => setActionError(null), 5000);
+      return;
+    }
+
+    setPendingAction({
+      recommendation,
+      ...action,
+    });
+    setShowConfirmDialog(true);
+  };
+
+  const executeAction = async () => {
+    if (!pendingAction) return;
+
+    setExecutingAction(true);
+    setActionError(null);
+    setShowConfirmDialog(false);
+
+    try {
+      // Create a rule that will be saved on both CRM and Meta
+      // This ensures the rule appears in Custom Rules and can be deleted/managed
+      const actionType = pendingAction.actionType === 'pause' ? 'PAUSE' : 'ACTIVATE';
+      const ruleName = `${actionType === 'PAUSE' ? 'Pause' : 'Activate'} ${pendingAction.recommendation.related_entity_name}`;
+
+      // Build filter config to target this specific ad set by name
+      const filterConfig = {
+        conditions: [
+          {
+            field: 'name',
+            operator: 'equals',
+            value: pendingAction.recommendation.related_entity_name,
+          },
+        ],
+        logical_operator: 'AND' as const,
+      };
+
+      const ruleToCreate: AdSetRuleCreate = {
+        agent_id: agentId,
+        campaign_id: campaignId,
+        rule_name: ruleName,
+        description: `${pendingAction.recommendation.message}\n\nCreated from optimization recommendation: ${pendingAction.recommendation.metric_label}`,
+        filter_config: filterConfig,
+        action: { type: actionType },
+        execution_mode: 'MANUAL',
+        execute_immediately: true, // Execute the action now
+      };
+
+      const response = await apiService.createAdSetRule(ruleToCreate);
+      const result = response.data as any;
+
+      // Build success message
+      let successMessage = `Rule "${ruleName}" created successfully!`;
+
+      if (result.meta_rule_result?.data?.id) {
+        successMessage += ' (synced to Meta)';
+      }
+
+      if (result.execution_result?.successful_count > 0) {
+        successMessage += `\n${result.execution_result.successful_count} ad set(s) updated.`;
+      }
+
+      setActionSuccess(successMessage);
+      showToast(successMessage, 'success');
+      setTimeout(() => setActionSuccess(null), 5000);
+
+      // Close the modal and refresh analysis
+      setSelectedRecommendation(null);
+      runAnalysis();
+
+      // Notify parent to refresh rules list
+      if (onRuleCreated) {
+        onRuleCreated();
+      }
+    } catch (err: any) {
+      const errorMessage = err.response?.data?.detail || err.message || 'Failed to create rule';
+      setActionError(errorMessage);
+      showToast(`Failed: ${errorMessage}`, 'error');
+      setTimeout(() => setActionError(null), 5000);
+    } finally {
+      setExecutingAction(false);
+      setPendingAction(null);
+    }
+  };
+
+  const cancelAction = () => {
+    setShowConfirmDialog(false);
+    setPendingAction(null);
   };
 
   const getPriorityBadge = (priority: string) => {
@@ -296,6 +437,20 @@ const OptimizationInsightsDashboard: React.FC<OptimizationInsightsProps> = ({
         </div>
       </div>
 
+      {/* Success/Error Notifications */}
+      {actionSuccess && (
+        <div className="p-4 bg-green-100 dark:bg-green-900/30 border border-green-400 dark:border-green-700 text-green-700 dark:text-green-400 rounded-lg flex items-center justify-between">
+          <span>✓ {actionSuccess}</span>
+          <button onClick={() => setActionSuccess(null)} className="text-green-700 dark:text-green-400 hover:text-green-900">✕</button>
+        </div>
+      )}
+      {actionError && (
+        <div className="p-4 bg-red-100 dark:bg-red-900/30 border border-red-400 dark:border-red-700 text-red-700 dark:text-red-400 rounded-lg flex items-center justify-between">
+          <span>⚠ {actionError}</span>
+          <button onClick={() => setActionError(null)} className="text-red-700 dark:text-red-400 hover:text-red-900">✕</button>
+        </div>
+      )}
+
       {/* Critical Issues */}
       {critical.length > 0 && (
         <div className="card p-6">
@@ -385,9 +540,22 @@ const OptimizationInsightsDashboard: React.FC<OptimizationInsightsProps> = ({
         <RecommendationModal
           recommendation={selectedRecommendation}
           onClose={() => setSelectedRecommendation(null)}
+          onTakeAction={handleTakeAction}
           getPriorityBadge={getPriorityBadge}
           getTypeIcon={getTypeIcon}
           formatCurrency={formatCurrency}
+          executingAction={executingAction}
+        />
+      )}
+
+      {/* Action Confirmation Dialog */}
+      {showConfirmDialog && pendingAction && (
+        <ActionConfirmDialog
+          recommendation={pendingAction.recommendation}
+          actionType={pendingAction.actionType}
+          onConfirm={executeAction}
+          onCancel={cancelAction}
+          executing={executingAction}
         />
       )}
     </div>
@@ -452,10 +620,12 @@ const RecommendationCard: React.FC<{
 const RecommendationModal: React.FC<{
   recommendation: OptimizationRecommendation;
   onClose: () => void;
+  onTakeAction: (recommendation: OptimizationRecommendation) => void;
   getPriorityBadge: (priority: string) => string;
   getTypeIcon: (type: string) => string;
   formatCurrency: (value: number) => string;
-}> = ({ recommendation, onClose, getPriorityBadge, getTypeIcon, formatCurrency }) => {
+  executingAction: boolean;
+}> = ({ recommendation, onClose, onTakeAction, getPriorityBadge, getTypeIcon, formatCurrency, executingAction }) => {
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white dark:bg-dark-lighter rounded-lg max-w-2xl w-full max-h-[80vh] overflow-y-auto">
@@ -556,12 +726,104 @@ const RecommendationModal: React.FC<{
             </button>
             {recommendation.action_endpoint && (
               <button
-                className="flex-1 px-4 py-2 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg"
-                onClick={() => alert('Action will be implemented: ' + recommendation.action_endpoint)}
+                className="flex-1 px-4 py-2 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg disabled:opacity-50"
+                onClick={() => onTakeAction(recommendation)}
+                disabled={executingAction}
               >
-                Take Action
+                {executingAction ? '⏳ Executing...' : '⚡ Take Action'}
               </button>
             )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Action Confirmation Dialog Component
+const ActionConfirmDialog: React.FC<{
+  recommendation: OptimizationRecommendation;
+  actionType: 'pause' | 'activate' | 'budget';
+  onConfirm: () => void;
+  onCancel: () => void;
+  executing: boolean;
+}> = ({ recommendation, actionType, onConfirm, onCancel, executing }) => {
+  const getActionDescription = () => {
+    switch (actionType) {
+      case 'pause':
+        return `Pause ad set "${recommendation.related_entity_name}"`;
+      case 'activate':
+        return `Activate ad set "${recommendation.related_entity_name}"`;
+      case 'budget':
+        return `Update budget for ad set "${recommendation.related_entity_name}"`;
+      default:
+        return `Execute action on "${recommendation.related_entity_name}"`;
+    }
+  };
+
+  const getActionIcon = () => {
+    switch (actionType) {
+      case 'pause':
+        return '⏸️';
+      case 'activate':
+        return '▶️';
+      case 'budget':
+        return '💰';
+      default:
+        return '⚡';
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4">
+      <div className="bg-white dark:bg-dark-lighter rounded-lg max-w-md w-full">
+        <div className="p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <span className="text-3xl">{getActionIcon()}</span>
+            <h3 className="text-xl font-bold text-gray-900 dark:text-white">
+              Confirm Action
+            </h3>
+          </div>
+
+          <p className="text-gray-700 dark:text-gray-300 mb-4">
+            Are you sure you want to:
+          </p>
+
+          <div className="p-4 bg-gray-100 dark:bg-gray-800 rounded-lg mb-4">
+            <p className="font-semibold text-gray-900 dark:text-white">
+              {getActionDescription()}
+            </p>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+              ID: {recommendation.related_entity_id}
+            </p>
+          </div>
+
+          <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg mb-4">
+            <p className="text-sm text-blue-800 dark:text-blue-300">
+              This will create a rule on both CRM and Meta Ads Manager. The rule will:
+            </p>
+            <ul className="text-sm text-blue-700 dark:text-blue-400 mt-2 list-disc list-inside">
+              <li>Appear in the Custom Rules section</li>
+              <li>Be synced to Meta Ads Manager</li>
+              <li>Execute immediately to apply the action</li>
+            </ul>
+          </div>
+
+          <div className="flex gap-3">
+            <button
+              onClick={onCancel}
+              disabled={executing}
+              className="flex-1 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={onConfirm}
+              disabled={executing}
+              className="flex-1 px-4 py-2 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg disabled:opacity-50"
+            >
+              {executing ? '⏳ Executing...' : '✓ Confirm'}
+            </button>
           </div>
         </div>
       </div>

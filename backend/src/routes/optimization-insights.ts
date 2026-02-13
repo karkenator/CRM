@@ -337,6 +337,107 @@ router.post('/config', authenticate, requireRoles('USER', 'ADMIN'), async (req: 
   }
 });
 
+/**
+ * POST /api/optimization-insights/execute-action
+ * Execute a recommended action (pause, activate, budget change) on a Meta ad set
+ */
+router.post('/execute-action', authenticate, requireRoles('USER', 'ADMIN'), async (req: AuthRequest, res: Response) => {
+  try {
+    const { agent_id, action_type, entity_id, action_params } = req.body;
+
+    if (!agent_id || !action_type || !entity_id) {
+      return res.status(400).json({ detail: 'agent_id, action_type, and entity_id are required' });
+    }
+
+    // Verify agent access
+    const agent = await Agent.findOne({ id: agent_id });
+    if (!agent) {
+      return res.status(404).json({ detail: 'Agent not found' });
+    }
+
+    if (req.user!.role !== 'ADMIN' && agent.user_id !== req.user!.id) {
+      return res.status(403).json({ detail: 'Access denied' });
+    }
+
+    let result;
+
+    switch (action_type) {
+      case 'pause':
+        // Pause the ad set
+        const pauseUrl = `${config.agent.baseUrl}/meta/adsets/${entity_id}/status`;
+        const pauseResponse = await axios.put(pauseUrl, { status: 'PAUSED' }, { timeout: 15000 });
+        result = pauseResponse.data;
+        break;
+
+      case 'activate':
+        // Activate the ad set
+        const activateUrl = `${config.agent.baseUrl}/meta/adsets/${entity_id}/status`;
+        const activateResponse = await axios.put(activateUrl, { status: 'ACTIVE' }, { timeout: 15000 });
+        result = activateResponse.data;
+        break;
+
+      case 'budget':
+        // Update ad set budget
+        if (!action_params || (!action_params.daily_budget && !action_params.lifetime_budget)) {
+          return res.status(400).json({ detail: 'budget action requires daily_budget or lifetime_budget in action_params' });
+        }
+        const budgetUrl = `${config.agent.baseUrl}/meta/adsets/${entity_id}/budget`;
+        const budgetPayload: any = {};
+        if (action_params.daily_budget) {
+          budgetPayload.daily_budget = action_params.daily_budget;
+        }
+        if (action_params.lifetime_budget) {
+          budgetPayload.lifetime_budget = action_params.lifetime_budget;
+        }
+        const budgetResponse = await axios.put(budgetUrl, budgetPayload, { timeout: 15000 });
+        result = budgetResponse.data;
+        break;
+
+      default:
+        return res.status(400).json({
+          detail: `Unknown action_type: ${action_type}. Supported: pause, activate, budget`
+        });
+    }
+
+    // Check for application-level errors in the response
+    if (result && result.status === 'error') {
+      return res.status(400).json({
+        success: false,
+        detail: result.message || result.error_details || 'Agent returned an error',
+        agent_response: result,
+      });
+    }
+
+    res.json({
+      success: true,
+      action_type,
+      entity_id,
+      result,
+      executed_at: new Date().toISOString(),
+    });
+  } catch (error: any) {
+    console.error('Execute action error:', error);
+
+    let errorMessage = error.message || 'Internal server error';
+
+    // Extract detailed error from axios response
+    if (error.response) {
+      if (error.response.data) {
+        if (error.response.data.status === 'error') {
+          errorMessage = error.response.data.message || error.response.data.error_details || errorMessage;
+        } else if (error.response.data.detail) {
+          errorMessage = error.response.data.detail;
+        }
+      }
+    }
+
+    res.status(500).json({
+      success: false,
+      detail: errorMessage,
+    });
+  }
+});
+
 export default router;
 
 
