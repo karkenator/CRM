@@ -15,6 +15,8 @@ const CampaignRules: React.FC<CampaignRulesProps> = ({ agentId, campaigns, refre
   const [error, setError] = useState<string | null>(null);
   const [executingRuleId, setExecutingRuleId] = useState<string | null>(null);
   const [updatingRuleId, setUpdatingRuleId] = useState<string | null>(null);
+  const [deletingRuleId, setDeletingRuleId] = useState<string | null>(null);
+  const [deleteConfirmRule, setDeleteConfirmRule] = useState<AdSetRule | null>(null);
   const [previewState, setPreviewState] = useState<{
     rule: AdSetRule | null;
     data: RulePreview | null;
@@ -121,6 +123,34 @@ const CampaignRules: React.FC<CampaignRulesProps> = ({ agentId, campaigns, refre
     setPreviewState({ rule: null, data: null, loading: false });
   };
 
+  const handleDeleteClick = (rule: AdSetRule) => {
+    setDeleteConfirmRule(rule);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteConfirmRule) return;
+
+    setDeletingRuleId(deleteConfirmRule.id);
+    try {
+      await apiService.deleteAdSetRule(deleteConfirmRule.id);
+      await fetchRules();
+      showToast(
+        `Rule "${deleteConfirmRule.rule_name}" deleted successfully${deleteConfirmRule.meta_rule_id ? ' (also removed from Meta)' : ''}`,
+        'success'
+      );
+    } catch (err: any) {
+      const errorMessage = err.response?.data?.detail || err.message || 'Failed to delete rule';
+      showToast(`Failed to delete rule: ${errorMessage}`, 'error');
+    } finally {
+      setDeletingRuleId(null);
+      setDeleteConfirmRule(null);
+    }
+  };
+
+  const handleDeleteCancel = () => {
+    setDeleteConfirmRule(null);
+  };
+
   return (
     <div className="card p-6 space-y-4">
       <div className="flex items-center justify-between">
@@ -171,7 +201,14 @@ const CampaignRules: React.FC<CampaignRulesProps> = ({ agentId, campaigns, refre
                     className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/60"
                   >
                     <td className="py-3 px-4">
-                      <div className="font-medium text-gray-900 dark:text-white">{rule.rule_name}</div>
+                      <div className="flex items-center gap-2">
+                        <div className="font-medium text-gray-900 dark:text-white">{rule.rule_name}</div>
+                        {rule.meta_rule_id && (
+                          <span className="px-1.5 py-0.5 rounded text-xs bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300" title="Synced to Meta">
+                            Meta
+                          </span>
+                        )}
+                      </div>
                       {rule.description && (
                         <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{rule.description}</p>
                       )}
@@ -253,6 +290,23 @@ const CampaignRules: React.FC<CampaignRulesProps> = ({ agentId, campaigns, refre
                         >
                           {executingRuleId === rule.id ? 'Executing...' : 'Run now'}
                         </button>
+                        <button
+                          onClick={() => handleDeleteClick(rule)}
+                          className="btn btn-sm bg-red-500 hover:bg-red-600 text-white"
+                          disabled={deletingRuleId === rule.id}
+                          title="Delete rule"
+                        >
+                          {deletingRuleId === rule.id ? (
+                            <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                            </svg>
+                          ) : (
+                            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          )}
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -322,6 +376,69 @@ const CampaignRules: React.FC<CampaignRulesProps> = ({ agentId, campaigns, refre
                   )}
                 </div>
               ) : null}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirmRule && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md mx-4">
+            <div className="p-6">
+              <div className="flex items-center gap-4 mb-4">
+                <div className="flex-shrink-0 w-12 h-12 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
+                  <svg className="w-6 h-6 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                    Delete Rule
+                  </h3>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    This action cannot be undone.
+                  </p>
+                </div>
+              </div>
+
+              <div className="mb-6">
+                <p className="text-gray-700 dark:text-gray-300">
+                  Are you sure you want to delete the rule <span className="font-semibold">"{deleteConfirmRule.rule_name}"</span>?
+                </p>
+                {deleteConfirmRule.meta_rule_id && (
+                  <p className="mt-2 text-sm text-blue-600 dark:text-blue-400">
+                    This rule is synced to Meta and will also be deleted from Meta Ads Manager.
+                  </p>
+                )}
+              </div>
+
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={handleDeleteCancel}
+                  className="btn btn-secondary"
+                  disabled={deletingRuleId === deleteConfirmRule.id}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleDeleteConfirm}
+                  className="btn bg-red-500 hover:bg-red-600 text-white"
+                  disabled={deletingRuleId === deleteConfirmRule.id}
+                >
+                  {deletingRuleId === deleteConfirmRule.id ? (
+                    <span className="flex items-center gap-2">
+                      <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                      </svg>
+                      Deleting...
+                    </span>
+                  ) : (
+                    'Delete Rule'
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         </div>

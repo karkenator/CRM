@@ -245,6 +245,77 @@ class ApiService {
   async getQuickWins(agentId: string, campaignId: string): Promise<{ data: any }> {
     return this.api.post('/api/campaign-insights/quick-wins', { agent_id: agentId, campaign_id: campaignId });
   }
+
+  // Optimization Insights endpoints (New Modular System)
+  async runOptimizationAnalysis(
+    agentId: string,
+    campaignId: string,
+    modules?: string[],
+    includeSentiment?: boolean
+  ): Promise<{ data: any }> {
+    return this.api.post('/api/optimization-insights/analyze', {
+      agent_id: agentId,
+      campaign_id: campaignId,
+      modules: modules || ['all'],
+      include_sentiment: includeSentiment || false,
+    });
+  }
+
+  async runOptimizationModule(
+    agentId: string,
+    campaignId: string,
+    moduleName: 'bleeding_budget' | 'creative_fatigue' | 'scaling'
+  ): Promise<{ data: any }> {
+    return this.api.post(`/api/optimization-insights/module/${moduleName}`, {
+      agent_id: agentId,
+      campaign_id: campaignId,
+    });
+  }
+
+  async runSentimentAnalysis(agentId: string, adIds: string[]): Promise<{ data: any }> {
+    return this.api.post('/api/optimization-insights/sentiment', {
+      agent_id: agentId,
+      ad_ids: adIds,
+    });
+  }
+
+  async updateCampaignConfig(
+    agentId: string,
+    campaignId: string,
+    config: { target_cpa?: number; target_roas?: number }
+  ): Promise<{ data: any }> {
+    return this.api.post('/api/optimization-insights/config', {
+      agent_id: agentId,
+      campaign_id: campaignId,
+      ...config,
+    });
+  }
+
+  async executeRecommendationAction(
+    agentId: string,
+    actionType: 'pause' | 'activate' | 'budget',
+    entityId: string,
+    actionParams?: { daily_budget?: number; lifetime_budget?: number }
+  ): Promise<{ data: any }> {
+    return this.api.post('/api/optimization-insights/execute-action', {
+      agent_id: agentId,
+      action_type: actionType,
+      entity_id: entityId,
+      action_params: actionParams,
+    });
+  }
+
+  async updateAdSetBudget(
+    agentId: string,
+    adsetId: string,
+    dailyBudget?: number,
+    lifetimeBudget?: number
+  ): Promise<{ data: any }> {
+    const params: any = {};
+    if (dailyBudget !== undefined) params.daily_budget = dailyBudget;
+    if (lifetimeBudget !== undefined) params.lifetime_budget = lifetimeBudget;
+    return this.api.put(`/meta/adsets/${adsetId}/budget?agent_id=${agentId}`, params);
+  }
 }
 
 export const apiService = new ApiService();

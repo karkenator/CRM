@@ -10,4 +10,5 @@ export * from './MetricSnapshot';
 export * from './DailyMetric';
 export * from './PasswordReset';
 export * from './AdSetRule';
+export * from './CampaignConfig';
 

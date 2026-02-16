@@ -299,7 +299,7 @@ You can preview and save this rule below.`,
     }
   };
 
-  const handleSave = async () => {
+  const handleSave = async (shouldExecute: boolean = false) => {
     if (!generatedRule) return;
 
     setSaving(true);
@@ -312,18 +312,48 @@ You can preview and save this rule below.`,
         filter_config: generatedRule.filter_config,
         action: generatedRule.action,
         execution_mode: executionMode,
+        execute_immediately: shouldExecute,
       };
 
-      await apiService.createAdSetRule(ruleToCreate);
+      const response = await apiService.createAdSetRule(ruleToCreate);
+      const result = response.data as any;
+
+      // Build success message based on what happened
+      let successContent = `🎉 Rule "${generatedRule.rule_name}" created successfully!\n\n`;
+
+      // Show Meta sync status first
+      if (result.meta_rule_result?.status === 'success') {
+        successContent += `✅ **Synced to Meta:** Rule is now active in Meta Ads Manager.\n`;
+      } else if (result.meta_rule_result?.status === 'warning') {
+        successContent += `⚠️ **Meta:** ${result.meta_rule_result.message}\n`;
+      } else if (result.meta_rule_result?.error) {
+        successContent += `⚠️ **Meta sync failed:** ${result.meta_rule_result.error}\n`;
+      }
+
+      // Show execution results if executed immediately
+      if (shouldExecute && result.execution_result) {
+        if (result.execution_result.successful_count > 0) {
+          successContent += `\n⚡ **Executed now:** ${result.execution_result.action || generatedRule.action.type} applied to ${result.execution_result.successful_count} ad set(s).`;
+        }
+        if (result.execution_result.failed_count > 0) {
+          successContent += `\n⚠️ ${result.execution_result.failed_count} ad set(s) failed to update.`;
+        }
+        if (result.execution_result.matched_count === 0) {
+          successContent += `\nℹ️ No ad sets currently match this rule.`;
+        }
+      }
+
+      // Show scheduling info
+      if (!shouldExecute) {
+        successContent += executionMode === 'AUTO'
+          ? '\n\n⏰ Rule will run automatically on both CRM and Meta.'
+          : '\n\n👆 You can run it manually from the Rules tab.';
+      }
 
       const successMessage: Message = {
         id: Date.now().toString(),
         type: 'system',
-        content: `🎉 Rule "${generatedRule.rule_name}" saved successfully!
-
-${executionMode === 'AUTO' 
-  ? '⚡ It will execute automatically every 5 minutes.' 
-  : '👆 You can run it manually from the Rules tab.'}`,
+        content: successContent,
         timestamp: new Date(),
       };
 
@@ -339,9 +369,15 @@ ${executionMode === 'AUTO'
       // Close after a delay
       setTimeout(() => {
         onClose();
-      }, 2500);
+      }, 3000);
     } catch (error: any) {
-      alert(`Failed to save rule: ${error.response?.data?.detail || error.message}`);
+      const errorMsg: Message = {
+        id: Date.now().toString(),
+        type: 'system',
+        content: `❌ Failed to create rule: ${error.response?.data?.detail || error.message}`,
+        timestamp: new Date(),
+      };
+      setMessages(prev => [...prev, errorMsg]);
     } finally {
       setSaving(false);
     }
@@ -540,20 +576,28 @@ ${executionMode === 'AUTO'
                       </button>
                     </div>
                   </div>
+
                   <div className="flex gap-2">
                     <button
                       onClick={handlePreview}
                       disabled={loading}
-                      className="btn btn-secondary flex-1"
+                      className="btn btn-secondary"
                     >
                       🔍 Preview
                     </button>
                     <button
-                      onClick={handleSave}
+                      onClick={() => handleSave(false)}
+                      disabled={saving}
+                      className="btn btn-secondary flex-1"
+                    >
+                      {saving ? '💾 Saving...' : '💾 Save Rule'}
+                    </button>
+                    <button
+                      onClick={() => handleSave(true)}
                       disabled={saving}
                       className="btn btn-primary flex-1"
                     >
-                      {saving ? '💾 Saving...' : '💾 Save Rule'}
+                      {saving ? '⚡ Applying...' : '⚡ Apply Now'}
                     </button>
                   </div>
                 </div>
@@ -702,12 +746,65 @@ ${executionMode === 'AUTO'
                                 )}
                               </div>
                               {opp.suggested_rule && (
-                                <button
-                                  onClick={() => handleApplySuggestion(opp)}
-                                  className="btn btn-primary btn-sm ml-4"
-                                >
-                                  Apply Rule
-                                </button>
+                                <div className="flex gap-2 ml-4">
+                                  <button
+                                    onClick={() => handleApplySuggestion(opp)}
+                                    className="btn btn-secondary btn-sm"
+                                  >
+                                    Review
+                                  </button>
+                                  <button
+                                    onClick={async () => {
+                                      try {
+                                        setSaving(true);
+                                        const ruleToCreate: AdSetRuleCreate = {
+                                          agent_id: agentId,
+                                          campaign_id: campaignId,
+                                          rule_name: opp.suggested_rule!.rule_name,
+                                          description: opp.description,
+                                          filter_config: opp.suggested_rule!.filter_config,
+                                          action: opp.suggested_rule!.action,
+                                          execution_mode: 'MANUAL',
+                                          execute_immediately: true,
+                                        };
+                                        const response = await apiService.createAdSetRule(ruleToCreate);
+                                        const result = response.data as any;
+
+                                        let msg = `✅ Applied: ${opp.title}`;
+                                        if (result.execution_result?.successful_count > 0) {
+                                          msg += `\n⚡ ${result.execution_result.successful_count} ad set(s) updated.`;
+                                        }
+
+                                        const successMsg: Message = {
+                                          id: Date.now().toString(),
+                                          type: 'system',
+                                          content: msg,
+                                          timestamp: new Date(),
+                                        };
+                                        setMessages(prev => [...prev, successMsg]);
+
+                                        // Refresh analysis
+                                        handleAnalyze();
+
+                                        if (onRuleCreated) onRuleCreated();
+                                      } catch (err: any) {
+                                        const errorMsg: Message = {
+                                          id: Date.now().toString(),
+                                          type: 'system',
+                                          content: `❌ Failed: ${err.response?.data?.detail || err.message}`,
+                                          timestamp: new Date(),
+                                        };
+                                        setMessages(prev => [...prev, errorMsg]);
+                                      } finally {
+                                        setSaving(false);
+                                      }
+                                    }}
+                                    disabled={saving}
+                                    className="btn btn-primary btn-sm"
+                                  >
+                                    {saving ? '⏳' : '⚡'} Apply Now
+                                  </button>
+                                </div>
                               )}
                             </div>
                           </div>

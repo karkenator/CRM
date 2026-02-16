@@ -25,6 +25,7 @@ export interface IAdSetRule extends Document {
   execution_count: number;
   last_action?: string;
   last_matched_count?: number;
+  meta_rule_id?: string; // ID of the rule on Meta's servers (if created there)
   created_at: Date;
   updated_at: Date;
 }
@@ -58,6 +59,7 @@ const AdSetRuleSchema = new Schema<IAdSetRule>({
   execution_count: { type: Number, default: 0 },
   last_action: { type: String },
   last_matched_count: { type: Number },
+  meta_rule_id: { type: String }, // ID of the rule on Meta's servers
   created_at: { type: Date, default: Date.now },
   updated_at: { type: Date, default: Date.now },
 });

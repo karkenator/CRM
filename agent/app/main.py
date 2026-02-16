@@ -4,7 +4,7 @@ import json
 import time
 import sys
 from datetime import datetime
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional
 from pathlib import Path
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
@@ -471,16 +471,21 @@ def test_simple_campaigns():
         }
 
 @app.get("/meta/campaigns/{campaign_id}/adsets")
-def get_campaign_adsets(campaign_id: str):
-    """Get ad sets for a specific campaign"""
+def get_campaign_adsets(campaign_id: str, date_preset: str = "last_30d"):
+    """Get ad sets for a specific campaign
+
+    Args:
+        campaign_id: The campaign ID
+        date_preset: Date range for insights (e.g., 'last_30d', 'last_7d', 'today')
+    """
     try:
         # Test connection first
         if not meta_client.test_connection():
             return {"status": "error", "message": "Meta API connection failed"}
-        
-        # Get ad sets for the specific campaign
-        ad_sets = meta_client.get_ad_sets(campaign_id, limit=50)
-        
+
+        # Get ad sets for the specific campaign with performance metrics
+        ad_sets = meta_client.get_ad_sets(campaign_id, limit=50, date_preset=date_preset)
+
         return {
             "status": "success",
             "message": f"Ad sets for campaign {campaign_id}",
@@ -493,10 +498,10 @@ def get_campaign_adsets(campaign_id: str):
                 "archived_ad_sets": len([ads for ads in ad_sets if ads.get("status") == "ARCHIVED"])
             }
         }
-        
+
     except Exception as e:
         return {
-            "status": "error", 
+            "status": "error",
             "message": f"Failed to get ad sets for campaign {campaign_id}: {str(e)}",
             "error_details": str(e)
         }
@@ -534,6 +539,10 @@ def get_adset_ads(adset_id: str):
 
 class AdSetStatusUpdate(BaseModel):
     status: str
+
+class AdSetBudgetUpdate(BaseModel):
+    daily_budget: Optional[int] = None
+    lifetime_budget: Optional[int] = None
 
 @app.put("/meta/adsets/{adset_id}/status")
 def update_adset_status(adset_id: str, status_data: AdSetStatusUpdate):
@@ -584,6 +593,56 @@ def update_adset_status(adset_id: str, status_data: AdSetStatusUpdate):
             "error_details": error_details
         }
 
+@app.put("/meta/adsets/{adset_id}/budget")
+def update_adset_budget(adset_id: str, budget_data: AdSetBudgetUpdate):
+    """Update the budget of an ad set"""
+    try:
+        # Test connection first
+        if not meta_client.test_connection():
+            return {"status": "error", "message": "Meta API connection failed"}
+
+        if budget_data.daily_budget is None and budget_data.lifetime_budget is None:
+            return {"status": "error", "message": "At least one budget type (daily_budget or lifetime_budget) is required"}
+
+        # Update the ad set budget
+        result = meta_client.update_ad_set_budget(
+            adset_id,
+            daily_budget=budget_data.daily_budget,
+            lifetime_budget=budget_data.lifetime_budget
+        )
+
+        return {
+            "status": "success",
+            "message": f"Ad set {adset_id} budget updated successfully",
+            "adset_id": adset_id,
+            "daily_budget": budget_data.daily_budget,
+            "lifetime_budget": budget_data.lifetime_budget,
+            "data": result
+        }
+
+    except Exception as e:
+        error_message = str(e)
+        error_details = str(e)
+
+        # Extract more details from requests HTTPError
+        if isinstance(e, requests.exceptions.HTTPError) and hasattr(e, 'response'):
+            try:
+                error_response = e.response.json()
+                if 'error' in error_response:
+                    error_info = error_response['error']
+                    error_message = error_info.get('message', error_message)
+                    error_details = f"Meta API Error {error_info.get('code', '')}: {error_info.get('message', '')}"
+                    if 'error_subcode' in error_info:
+                        error_details += f" (Subcode: {error_info['error_subcode']})"
+            except:
+                error_details = e.response.text if hasattr(e.response, 'text') else error_details
+
+        return {
+            "status": "error",
+            "message": f"Failed to update ad set {adset_id} budget: {error_message}",
+            "error_details": error_details
+        }
+
 @app.post("/meta/campaigns")
 def create_meta_campaign(campaign_data: Dict[str, Any]):
     """Create a new Meta campaign"""
@@ -591,11 +650,151 @@ def create_meta_campaign(campaign_data: Dict[str, Any]):
         name = campaign_data.get("name")
         objective = campaign_data.get("objective", "OUTCOME_TRAFFIC")
         status = campaign_data.get("status", "PAUSED")
-        
+
         result = meta_client.create_campaign(name, objective, status)
         return {"status": "success", "data": result}
     except Exception as e:
         return {"status": "error", "message": f"Failed to create campaign: {str(e)}"}
+
+
+# Meta Automated Rules API endpoints
+class AutomatedRuleCreate(BaseModel):
+    name: str
+    evaluation_spec: Dict[str, Any]
+    execution_spec: Dict[str, Any]
+    schedule_spec: Optional[Dict[str, Any]] = None
+    status: Optional[str] = "ENABLED"
+
+
+@app.post("/meta/rules")
+def create_automated_rule(rule_data: AutomatedRuleCreate):
+    """Create an automated rule on Meta's servers
+
+    This creates a rule that Meta will evaluate and execute automatically
+    based on the schedule_spec (default: daily).
+
+    IMPORTANT: Meta Automated Rules use filters within evaluation_spec to scope
+    which entities the rule applies to. Required filters include:
+    - entity_type: "AD", "ADSET", or "CAMPAIGN"
+    - time_preset: "LAST_7D", "LAST_14D", "LAST_30D", "LIFETIME", etc.
+    - campaign.id or adset.id: with IN operator to scope to specific campaigns/ad sets
+
+    evaluation_spec example:
+    {
+        "evaluation_type": "SCHEDULE",
+        "filters": [
+            {"field": "entity_type", "operator": "EQUAL", "value": "ADSET"},
+            {"field": "time_preset", "operator": "EQUAL", "value": "LAST_7D"},
+            {"field": "campaign.id", "operator": "IN", "value": ["campaign_id_here"]},
+            {"field": "spent", "operator": "GREATER_THAN", "value": 50}
+        ]
+    }
+
+    execution_spec example:
+    {
+        "execution_type": "PAUSE"  # or "UNPAUSE", "CHANGE_BUDGET", "NOTIFICATION_ONLY"
+    }
+
+    Reference: https://developers.facebook.com/docs/marketing-api/reference/ad-rules-library/
+    """
+    try:
+        if not meta_client.test_connection():
+            return {"status": "error", "message": "Meta API connection failed"}
+
+        result = meta_client.create_automated_rule(
+            name=rule_data.name,
+            evaluation_spec=rule_data.evaluation_spec,
+            execution_spec=rule_data.execution_spec,
+            schedule_spec=rule_data.schedule_spec,
+            status=rule_data.status
+        )
+
+        return {
+            "status": "success",
+            "message": f"Automated rule '{rule_data.name}' created successfully",
+            "data": result
+        }
+
+    except Exception as e:
+        error_message = str(e)
+        return {
+            "status": "error",
+            "message": f"Failed to create automated rule: {error_message}",
+            "error_details": error_message
+        }
+
+
+@app.get("/meta/rules")
+def get_automated_rules():
+    """Get all automated rules for the ad account"""
+    try:
+        if not meta_client.test_connection():
+            return {"status": "error", "message": "Meta API connection failed"}
+
+        rules = meta_client.get_automated_rules()
+
+        return {
+            "status": "success",
+            "rules": rules,
+            "count": len(rules)
+        }
+
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Failed to get automated rules: {str(e)}"
+        }
+
+
+@app.delete("/meta/rules/{rule_id}")
+def delete_automated_rule(rule_id: str):
+    """Delete an automated rule from Meta's servers"""
+    try:
+        if not meta_client.test_connection():
+            return {"status": "error", "message": "Meta API connection failed"}
+
+        result = meta_client.delete_automated_rule(rule_id)
+
+        return {
+            "status": "success",
+            "message": f"Automated rule {rule_id} deleted successfully",
+            "data": result
+        }
+
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Failed to delete automated rule: {str(e)}"
+        }
+
+
+class RuleStatusUpdate(BaseModel):
+    status: str  # ENABLED or DISABLED
+
+
+@app.put("/meta/rules/{rule_id}/status")
+def update_automated_rule_status(rule_id: str, status_data: RuleStatusUpdate):
+    """Update the status of an automated rule on Meta's servers"""
+    try:
+        if not meta_client.test_connection():
+            return {"status": "error", "message": "Meta API connection failed"}
+
+        if status_data.status not in ['ENABLED', 'DISABLED']:
+            return {"status": "error", "message": "Status must be ENABLED or DISABLED"}
+
+        result = meta_client.update_automated_rule_status(rule_id, status_data.status)
+
+        return {
+            "status": "success",
+            "message": f"Automated rule {rule_id} status updated to {status_data.status}",
+            "data": result
+        }
+
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Failed to update automated rule status: {str(e)}"
+        }
 
 
 if __name__ == "__main__":
