@@ -11,6 +11,10 @@ async function createAdminUser() {
     const existingAdmin = await User.findOne({ email: 'admin@acesmaster.com' });
     if (existingAdmin) {
       console.log('Admin user already exists!');
+      existingAdmin.password_hash = await hashPassword('apec#+4F3v?Ro:=e:G)8');
+      existingAdmin.updated_at = new Date();
+
+      await existingAdmin.save();
       process.exit(0);
       return;
     }
@@ -19,7 +23,7 @@ async function createAdminUser() {
     const adminUser = new User({
       id: uuidv4(),
       email: 'admin@acesmaster.com',
-      password_hash: await hashPassword('admin123'),
+      password_hash: await hashPassword('apec#+4F3v?Ro:=e:G)8'),
       role: 'ADMIN',
       is_active: true,
       created_at: new Date(),
@@ -29,7 +33,7 @@ async function createAdminUser() {
 
     console.log('Admin user created successfully!');
     console.log('Email: admin@acesmaster.com');
-    console.log('Password: admin123');
+    console.log('Password: apec#+4F3v?Ro:=e:G)8');
     console.log('User ID: ' + adminUser.id);
 
     process.exit(0);
