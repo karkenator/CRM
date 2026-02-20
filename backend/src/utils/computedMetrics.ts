@@ -12,8 +12,8 @@ export interface ComputedMetrics {
   holdRate: number; // (video_thruplay / video_3_sec_watched) * 100
   
   // Funnel Metrics
-  dropOffRate: number; // ((clicks - landing_page_views) / clicks) * 100
-  clickToLandingRate: number; // (landing_page_views / clicks) * 100
+  dropOffRate: number; // ((outbound_clicks - landing_page_views) / outbound_clicks) * 100
+  clickToLandingRate: number; // (landing_page_views / outbound_clicks) * 100
   
   // Conversion Metrics
   conversionRate: number; // (conversions / clicks) * 100
@@ -127,8 +127,8 @@ export function calculateComputedMetrics(metrics: any): ComputedMetrics {
     holdRate: video3SecWatched > 0 ? (videoThruplay / video3SecWatched) * 100 : 0,
     
     // Funnel Metrics
-    dropOffRate: clicks > 0 ? ((clicks - landingPageViews) / clicks) * 100 : 0,
-    clickToLandingRate: clicks > 0 ? (landingPageViews / clicks) * 100 : 0,
+    dropOffRate: outboundClicks > 0 ? ((outboundClicks - landingPageViews) / outboundClicks) * 100 : 0,
+    clickToLandingRate: outboundClicks > 0 ? (landingPageViews / outboundClicks) * 100 : 0,
     
     // Conversion Metrics
     conversionRate: clicks > 0 ? (conversions / clicks) * 100 : 0,
