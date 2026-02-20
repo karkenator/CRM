@@ -372,7 +372,9 @@ export async function analyzeCampaign(
     const metrics = adSet.performance_metrics || {};
     totalSpend += parseFloat(metrics.spend || 0);
     totalImpressions += parseInt(metrics.impressions || 0);
-    totalClicks += parseInt(metrics.clicks || 0);
+    // Use Link Clicks (inline_link_clicks) — Meta's "Link Clicks" metric, not "Clicks (All)"
+    // Per Meta's 2016 update: inline_link_clicks = clicks on links within the ad
+    totalClicks += parseInt(metrics.inline_link_clicks || 0) || getLinkClicksFromActions(metrics);
     
     if (metrics.actions && Array.isArray(metrics.actions)) {
       const purchase = metrics.actions.find((a: any) => 
@@ -496,16 +498,16 @@ function generateResearchBasedInsights(
   // Calculate conversion rate distribution
   const adSetsWithConversions = adSetsData.filter(a => {
     const metrics = a.performance_metrics || {};
-    const clicks = parseInt(metrics.clicks || 0);
+    const linkClicks = parseInt(metrics.inline_link_clicks || 0) || getLinkClicksFromActions(metrics);
     const conversions = getConversions(metrics);
-    return clicks > 0 && conversions > 0;
+    return linkClicks > 0 && conversions > 0;
   });
-  
+
   if (adSetsWithConversions.length > 0) {
     const bestConversionRate = Math.max(...adSetsWithConversions.map(a => {
-      const clicks = parseInt(a.performance_metrics?.clicks || 0);
+      const linkClicks = parseInt(a.performance_metrics?.inline_link_clicks || 0) || getLinkClicksFromActions(a.performance_metrics);
       const conversions = getConversions(a.performance_metrics);
-      return clicks > 0 ? (conversions / clicks) * 100 : 0;
+      return linkClicks > 0 ? (conversions / linkClicks) * 100 : 0;
     }));
     
     insights.push(`🏆 Best Converting Ad Set: ${bestConversionRate.toFixed(2)}% conversion rate - ${adSetsWithConversions.length} ad sets are generating conversions`);
@@ -540,14 +542,14 @@ function generateResearchBasedInsights(
     }
   }
   
-  // High engagement, low conversion detection
+  // High engagement, low conversion detection — use Link Clicks not Clicks (All)
   const highEngagementLowConversion = adSetsData.filter(a => {
     const metrics = a.performance_metrics || {};
     const ctr = parseFloat(metrics.ctr || 0);
-    const clicks = parseInt(metrics.clicks || 0);
+    const linkClicks = parseInt(metrics.inline_link_clicks || 0) || getLinkClicksFromActions(metrics);
     const conversions = getConversions(metrics);
-    const conversionRate = clicks > 0 ? (conversions / clicks) * 100 : 0;
-    return ctr > 1.5 && clicks > 20 && conversionRate < overallConversionRate * 0.5;
+    const conversionRate = linkClicks > 0 ? (conversions / linkClicks) * 100 : 0;
+    return ctr > 1.5 && linkClicks > 20 && conversionRate < overallConversionRate * 0.5;
   });
   
   if (highEngagementLowConversion.length > 0) {
@@ -604,18 +606,21 @@ async function getAIAnalysis(
 
   const adSetsSummary = adSetsData.slice(0, 20).map(adSet => {
     const metrics = adSet.performance_metrics || {};
+    const linkClicks = parseInt(metrics.inline_link_clicks || 0) || getLinkClicksFromActions(metrics);
+    const conversions = getConversions(metrics);
     return {
       id: adSet.id,
       name: adSet.name,
       status: adSet.status,
       spend: metrics.spend,
       impressions: metrics.impressions,
-      clicks: metrics.clicks,
+      link_clicks: linkClicks,       // inline_link_clicks — Meta's "Link Clicks"
+      clicks_all: metrics.clicks,    // Clicks (All) — includes engagement, not just link clicks
       ctr: metrics.ctr,
       cpc: metrics.cpc,
-      conversions: getConversions(metrics),
-      cost_per_conversion: getConversions(metrics) > 0 
-        ? (parseFloat(metrics.spend || 0) / getConversions(metrics)).toFixed(2) 
+      conversions,
+      cost_per_conversion: conversions > 0
+        ? (parseFloat(metrics.spend || 0) / conversions).toFixed(2)
         : 'N/A',
     };
   });
@@ -628,14 +633,18 @@ Objective: ${campaignData.objective || 'N/A'}
 
 🔍 KEY CONVERSION METRICS:
 - Total Conversions: ${summary.total_conversions}
-- Overall Conversion Rate: ${summary.total_clicks > 0 ? ((summary.total_conversions / summary.total_clicks) * 100).toFixed(2) : '0.00'}%
+- Overall Conversion Rate: ${summary.total_clicks > 0 ? ((summary.total_conversions / summary.total_clicks) * 100).toFixed(2) : '0.00'}% (conversions / link clicks)
 - Cost per Conversion: $${summary.average_cost_per_conversion.toFixed(2)}
-- Click-to-Conversion Rate: ${summary.total_clicks > 0 ? ((summary.total_conversions / summary.total_clicks) * 100).toFixed(2) : '0.00'}%
+- Link Click-to-Conversion Rate: ${summary.total_clicks > 0 ? ((summary.total_conversions / summary.total_clicks) * 100).toFixed(2) : '0.00'}%
+
+NOTE: "link_clicks" in ad set data = Meta's "Link Clicks" (inline_link_clicks) — clicks on links within the ad.
+"clicks_all" = Meta's "Clicks (All)" — includes post likes, comments, and other engagement, NOT just link clicks.
+Use link_clicks for conversion rate analysis; use clicks_all for engagement breadth only.
 
 Campaign Overview:
 - Total Ad Sets: ${summary.total_ad_sets} (Active: ${summary.active_ad_sets}, Paused: ${summary.paused_ad_sets})
 - Total Spend: $${summary.total_spend.toFixed(2)}
-- Total Clicks: ${summary.total_clicks}
+- Total Link Clicks: ${summary.total_clicks}
 - Average CTR: ${summary.average_ctr.toFixed(2)}%
 - Average CPC: $${summary.average_cpc.toFixed(2)}
 - ROAS: ${summary.average_roas.toFixed(2)}
@@ -688,10 +697,20 @@ Focus exclusively on strategies that will INCREASE the number of conversions and
 
 function getConversions(metrics: any): number {
   if (!metrics.actions || !Array.isArray(metrics.actions)) return 0;
-  const purchase = metrics.actions.find((a: any) => 
+  const purchase = metrics.actions.find((a: any) =>
     a.action_type === 'purchase' || a.action_type === 'omni_purchase' || a.action_type === 'lead'
   );
   return purchase ? parseInt(purchase.value || 0) : 0;
+}
+
+/**
+ * Extract Link Clicks from actions array (link_click action type)
+ * Fallback when inline_link_clicks field is not present in metrics
+ */
+function getLinkClicksFromActions(metrics: any): number {
+  if (!metrics.actions || !Array.isArray(metrics.actions)) return 0;
+  const action = metrics.actions.find((a: any) => a.action_type === 'link_click');
+  return action ? parseInt(action.value || 0) : 0;
 }
 
 function generateBasicInsights(summary: any, underperforming: any[], topPerforming: any[]): string[] {
@@ -719,9 +738,9 @@ function generateBasicInsights(summary: any, underperforming: any[], topPerformi
 
   if (topPerforming.length > 0) {
     const bestCPC = topPerforming[0].performance_metrics?.spend / getConversions(topPerforming[0].performance_metrics);
-    const bestClicks = parseInt(topPerforming[0].performance_metrics?.clicks || 0);
+    const bestLinkClicks = parseInt(topPerforming[0].performance_metrics?.inline_link_clicks || 0) || getLinkClicksFromActions(topPerforming[0].performance_metrics);
     const bestConversions = getConversions(topPerforming[0].performance_metrics);
-    const bestConversionRate = bestClicks > 0 ? (bestConversions / bestClicks) * 100 : 0;
+    const bestConversionRate = bestLinkClicks > 0 ? (bestConversions / bestLinkClicks) * 100 : 0;
     
     insights.push(`🎯 Top converter: ${bestConversionRate.toFixed(2)}% conversion rate at $${bestCPC?.toFixed(2) || 'N/A'} cost per conversion. Scale this winning formula to maximize conversions.`);
   }

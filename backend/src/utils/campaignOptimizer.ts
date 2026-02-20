@@ -308,24 +308,26 @@ export function analyzeConversionRateOptimization(adSets: any[]): OptimizationIn
   const insights: OptimizationInsight[] = [];
   
   // Calculate conversion rates for all ad sets
+  // Use inline_link_clicks (Link Clicks) as denominator — per Meta's 2016 update,
+  // this is distinct from clicks (Clicks All) which includes non-link engagement
   const adSetsWithConversionData = adSets.map(adSet => {
     const metrics = adSet.performance_metrics || {};
-    const clicks = parseInt(metrics.clicks || 0);
+    const linkClicks = parseInt(metrics.inline_link_clicks || 0) || getLinkClicksFromActions(metrics);
     const conversions = getConversions(metrics);
     const spend = parseFloat(metrics.spend || 0);
-    const conversionRate = clicks > 0 ? (conversions / clicks) * 100 : 0;
+    const conversionRate = linkClicks > 0 ? (conversions / linkClicks) * 100 : 0;
     const ctr = parseFloat(metrics.ctr || 0);
-    
+
     return {
       ...adSet,
-      clicks,
+      clicks: linkClicks,
       conversions,
       conversionRate,
       ctr,
       spend,
     };
   });
-  
+
   // Find the average conversion rate
   const totalClicks = adSetsWithConversionData.reduce((sum, a) => sum + a.clicks, 0);
   const totalConversions = adSetsWithConversionData.reduce((sum, a) => sum + a.conversions, 0);
@@ -458,10 +460,11 @@ export function analyzeConversionFunnel(adSets: any[]): OptimizationInsight[] {
   
   for (const adSet of adSets) {
     const metrics = adSet.performance_metrics || {};
-    const clicks = parseInt(metrics.clicks || 0);
+    // Use Link Clicks (inline_link_clicks) — only link clicks can lead to conversions
+    const clicks = parseInt(metrics.inline_link_clicks || 0) || getLinkClicksFromActions(metrics);
     const conversions = getConversions(metrics);
     const spend = parseFloat(metrics.spend || 0);
-    
+
     // Look for "add to cart" or "initiate checkout" actions if available
     let addToCarts = 0;
     let initiateCheckouts = 0;
@@ -579,6 +582,17 @@ export function calculateCampaignHealth(adSets: any[]): CampaignHealth {
 }
 
 // Helper functions
+
+/**
+ * Extract Link Clicks from actions array (link_click action type)
+ * Fallback for when inline_link_clicks field is not present
+ */
+function getLinkClicksFromActions(metrics: any): number {
+  if (!metrics.actions || !Array.isArray(metrics.actions)) return 0;
+  const action = metrics.actions.find((a: any) => a.action_type === 'link_click');
+  return action ? parseInt(action.value || 0) : 0;
+}
+
 function getConversions(metrics: any): number {
   if (!metrics.actions || !Array.isArray(metrics.actions)) return 0;
   const purchase = metrics.actions.find((a: any) => 

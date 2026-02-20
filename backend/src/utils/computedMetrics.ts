@@ -96,10 +96,17 @@ export function calculateComputedMetrics(metrics: any): ComputedMetrics {
   }
   
   // Landing page metrics
-  const landingPageViews = metrics.landing_page_views 
+  const landingPageViews = metrics.landing_page_views
     ? parseInt(metrics.landing_page_views || 0)
     : getActionValue(actions, 'landing_page_view');
-  
+
+  // Link Clicks (inline_link_clicks) = what Meta Ads Manager labels "Link Clicks"
+  // These are clicks on links within the ad (on or off Facebook properties)
+  // Per Meta's 2016 update: distinct from "Clicks (All)" which includes engagement
+  const linkClicks = metrics.inline_link_clicks
+    ? parseInt(metrics.inline_link_clicks || 0)
+    : getActionValue(actions, 'link_click');
+
   const outboundClicks = metrics.outbound_clicks
     ? parseInt(metrics.outbound_clicks || 0)
     : getActionValue(actions, 'outbound_click');
@@ -130,8 +137,9 @@ export function calculateComputedMetrics(metrics: any): ComputedMetrics {
     dropOffRate: outboundClicks > 0 ? ((outboundClicks - landingPageViews) / outboundClicks) * 100 : 0,
     clickToLandingRate: outboundClicks > 0 ? (landingPageViews / outboundClicks) * 100 : 0,
     
-    // Conversion Metrics
-    conversionRate: clicks > 0 ? (conversions / clicks) * 100 : 0,
+    // Conversion Metrics — use Link Clicks (inline_link_clicks) as denominator,
+    // not Clicks (All), since only link clicks can lead to a conversion
+    conversionRate: linkClicks > 0 ? (conversions / linkClicks) * 100 : 0,
     landingToConversionRate: landingPageViews > 0 ? (conversions / landingPageViews) * 100 : 0,
     
     // Cost Efficiency
