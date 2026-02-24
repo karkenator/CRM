@@ -258,20 +258,20 @@ export class CreativeFatigueDetector {
         });
       }
       
-      // Additional: Drop-off Rate (people clicking but not landing)
-      if (computed.dropOffRate > 40 && spend > 10) {
+      // Additional: Checkout Rate (visitors who reach landing page but don't initiate checkout)
+      if (computed.checkoutRate > 0 && computed.checkoutRate < 5 && spend > 10) {
         recommendations.push({
-          id: `rec_dropoff_${adSet.id}`,
+          id: `rec_checkout_rate_${adSet.id}`,
           type: 'creative_alert',
           priority: 'HIGH',
           related_entity_id: adSet.id,
           related_entity_name: adSet.name,
-          detected_value: computed.dropOffRate,
-          benchmark_value: 20.0,
-          metric_label: 'Drop-Off Rate',
-          message: `🚪 ${computed.dropOffRate.toFixed(0)}% of people click but never reach your landing page. Possible issues: slow loading page, broken link, or mobile incompatibility. Fix this immediately.`,
-          estimated_savings: spend * (computed.dropOffRate / 100),
-          confidence: 90,
+          detected_value: computed.checkoutRate,
+          benchmark_value: 5.0,
+          metric_label: 'Checkout Rate',
+          message: `🛒 Only ${computed.checkoutRate.toFixed(1)}% of landing page visitors are initiating checkout. Possible issues: unclear CTA, pricing concerns, or poor page experience. Review and optimise your checkout flow.`,
+          estimated_savings: spend * ((5 - computed.checkoutRate) / 100),
+          confidence: 85,
           module: 'Creative Fatigue Detector',
         });
       }

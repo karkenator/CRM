@@ -12,7 +12,7 @@ export interface ComputedMetrics {
   holdRate: number; // (video_thruplay / video_3_sec_watched) * 100
   
   // Funnel Metrics
-  dropOffRate: number; // ((outbound_clicks - landing_page_views) / outbound_clicks) * 100
+  checkoutRate: number; // (initiate_checkout / landing_page_views) * 100
   clickToLandingRate: number; // (landing_page_views / outbound_clicks) * 100
   
   // Conversion Metrics
@@ -111,8 +111,11 @@ export function calculateComputedMetrics(metrics: any): ComputedMetrics {
     ? parseInt(metrics.outbound_clicks || 0)
     : getActionValue(actions, 'outbound_click');
   
+  // Checkout initiation
+  const initiateCheckout = getActionValue(actions, 'initiate_checkout');
+
   // Conversion metrics
-  const conversions = getActionValue(actions, 'purchase') || 
+  const conversions = getActionValue(actions, 'purchase') ||
                      getActionValue(actions, 'omni_purchase') ||
                      getActionValue(actions, 'lead') ||
                      getActionValue(actions, 'offsite_conversion');
@@ -134,7 +137,7 @@ export function calculateComputedMetrics(metrics: any): ComputedMetrics {
     holdRate: video3SecWatched > 0 ? (videoThruplay / video3SecWatched) * 100 : 0,
     
     // Funnel Metrics
-    dropOffRate: outboundClicks > 0 ? ((outboundClicks - landingPageViews) / outboundClicks) * 100 : 0,
+    checkoutRate: landingPageViews > 0 ? (initiateCheckout / landingPageViews) * 100 : 0,
     clickToLandingRate: outboundClicks > 0 ? (landingPageViews / outboundClicks) * 100 : 0,
     
     // Conversion Metrics — use Link Clicks (inline_link_clicks) as denominator,

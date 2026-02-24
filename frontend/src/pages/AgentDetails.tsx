@@ -249,6 +249,21 @@ const AgentDetails: React.FC = () => {
     }
   };
 
+  const getCheckoutRate = (metrics: Record<string, any> | undefined): string => {
+    if (!metrics) return '—';
+    const actions: any[] = metrics.actions || [];
+    const landingPageViews = metrics.landing_page_views
+      ? parseInt(metrics.landing_page_views)
+      : (actions.find((a) => a.action_type === 'landing_page_view')?.value
+          ? parseInt(actions.find((a) => a.action_type === 'landing_page_view').value)
+          : 0);
+    const initiateCheckout = actions.find((a) => a.action_type === 'initiate_checkout')?.value
+      ? parseInt(actions.find((a) => a.action_type === 'initiate_checkout').value)
+      : 0;
+    if (landingPageViews === 0) return '—';
+    return `${((initiateCheckout / landingPageViews) * 100).toFixed(2)}%`;
+  };
+
   const fetchOptimizationData = async (campaignId: string) => {
     if (!agent?.id) return;
     
@@ -613,6 +628,7 @@ const AgentDetails: React.FC = () => {
                       <th className="text-left py-3 px-4 text-sm font-medium text-gray-700 dark:text-gray-300">Impressions</th>
                       <th className="text-left py-3 px-4 text-sm font-medium text-gray-700 dark:text-gray-300">Cost per result</th>
                       <th className="text-left py-3 px-4 text-sm font-medium text-gray-700 dark:text-gray-300">Amount spent</th>
+                      <th className="text-left py-3 px-4 text-sm font-medium text-gray-700 dark:text-gray-300">Checkout Rate</th>
                       <th className="text-left py-3 px-4 text-sm font-medium text-gray-700 dark:text-gray-300">Actions</th>
                     </tr>
                   </thead>
@@ -667,8 +683,11 @@ const AgentDetails: React.FC = () => {
                           </div>
                         </td>
                         <td className="py-3 px-4 font-medium text-gray-900 dark:text-white">
-                              {campaign.performance_metrics?.spend ? 
+                              {campaign.performance_metrics?.spend ?
                                 `€${parseFloat(campaign.performance_metrics.spend).toFixed(2)}` : '€0.00'}
+                        </td>
+                        <td className="py-3 px-4 font-medium text-gray-900 dark:text-white">
+                          {getCheckoutRate(campaign.performance_metrics)}
                         </td>
                         <td className="py-3 px-4">
                           <button
@@ -728,6 +747,7 @@ const AgentDetails: React.FC = () => {
                       <th className="text-left py-3 px-4 text-sm font-medium text-gray-700 dark:text-gray-300">Impressions</th>
                       <th className="text-left py-3 px-4 text-sm font-medium text-gray-700 dark:text-gray-300">Cost per result</th>
                       <th className="text-left py-3 px-4 text-sm font-medium text-gray-700 dark:text-gray-300">Amount spent</th>
+                      <th className="text-left py-3 px-4 text-sm font-medium text-gray-700 dark:text-gray-300">Checkout Rate</th>
                       <th className="text-left py-3 px-4 text-sm font-medium text-gray-700 dark:text-gray-300">Actions</th>
                     </tr>
                   </thead>
@@ -803,8 +823,11 @@ const AgentDetails: React.FC = () => {
                           </div>
                         </td>
                         <td className="py-3 px-4 font-medium text-gray-900 dark:text-white">
-                              {adset.performance_metrics?.spend ? 
+                              {adset.performance_metrics?.spend ?
                                 `€${parseFloat(adset.performance_metrics.spend).toFixed(2)}` : '€0.00'}
+                        </td>
+                        <td className="py-3 px-4 font-medium text-gray-900 dark:text-white">
+                          {getCheckoutRate(adset.performance_metrics)}
                         </td>
                         <td className="py-3 px-4">
                           <button
