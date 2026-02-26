@@ -60,7 +60,7 @@ const Agents: React.FC = () => {
   const handleSubmit = async () => {
     try {
       setError('');
-      
+
       if (!formData.name.trim()) {
         setError('Agent name is required');
         return;
@@ -73,14 +73,13 @@ const Agents: React.FC = () => {
       };
 
       const response = await apiService.createAgent(agentData);
-      
-      // Show token dialog for new agents
+
       if (response.data.bootstrap?.token) {
         setAgentToken(response.data.bootstrap.token);
         setAgentId(response.data.id);
         setShowTokenDialog(true);
       }
-      
+
       await fetchData();
       handleClose();
     } catch (err: any) {
@@ -91,112 +90,141 @@ const Agents: React.FC = () => {
   if (loading) {
     return (
       <div className="flex justify-center items-center min-h-[400px]">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+        <div className="w-8 h-8 rounded-full border-2 border-brand border-t-transparent animate-spin" />
       </div>
     );
   }
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Agents</h1>
-        <button 
-          onClick={handleOpen}
-          className="btn btn-primary flex items-center gap-2"
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-          </svg>
-          Create Agent
-        </button>
-      </div>
+      {/* Page title */}
+      <h1 className="text-2xl font-bold text-gray-900 mb-6">Agents</h1>
 
       {error && (
-        <div className="mb-4 p-4 bg-red-100 dark:bg-red-900/30 border border-red-400 dark:border-red-800 text-red-700 dark:text-red-400 rounded-lg">
+        <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm">
           {error}
         </div>
       )}
 
-      <div className="card p-6">
+      {/* ── Agents list card ─────────────────────────────────────────── */}
+      <div className="bg-white rounded-2xl border border-gray-200">
+        {/* Card header */}
+        <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100">
+          <h2 className="text-base font-semibold text-gray-900">Agents list</h2>
+          <button
+            onClick={handleOpen}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            Add new
+          </button>
+        </div>
+
+        {/* Table */}
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
-              <tr className="border-b border-gray-200 dark:border-gray-800">
-                <th className="text-left py-3 px-4 text-sm font-medium text-gray-700 dark:text-gray-300">Name</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-gray-700 dark:text-gray-300">User</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-gray-700 dark:text-gray-300">Status</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-gray-700 dark:text-gray-300">Last Heartbeat</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-gray-700 dark:text-gray-300">Actions</th>
+              <tr className="border-b border-gray-100">
+                <th className="text-left px-6 py-3 text-sm font-medium text-gray-600">Name</th>
+                <th className="text-left px-6 py-3 text-sm font-medium text-gray-600">User</th>
+                <th className="text-left px-6 py-3 text-sm font-medium text-gray-600">Status</th>
+                <th className="text-left px-6 py-3 text-sm font-medium text-gray-600">Last Heartbeat</th>
+                <th className="px-6 py-3" />
               </tr>
             </thead>
             <tbody>
-              {agents.map((agent) => (
-                <tr key={agent.id} className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-dark-lighter">
-                  <td className="py-3 px-4 text-gray-900 dark:text-white">{agent.name}</td>
-                  <td className="py-3 px-4 text-gray-600 dark:text-gray-400">
-                    {users.find(u => u.id === agent.user_id)?.email || 'Unknown'}
-                  </td>
-                  <td className="py-3 px-4">
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                      agent.status === 'ONLINE'
-                        ? 'bg-primary text-black'
-                        : 'bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-300'
-                    }`}>
-                      {agent.status}
-                    </span>
-                  </td>
-                  <td className="py-3 px-4 text-gray-600 dark:text-gray-400">
-                    {agent.last_heartbeat_at
-                      ? new Date(agent.last_heartbeat_at).toLocaleString()
-                      : 'Never'}
-                  </td>
-                  <td className="py-3 px-4">
-                    <button
-                      onClick={() => navigate(`/agents/${agent.id}`)}
-                      className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-dark-lighter"
-                    >
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                      </svg>
-                    </button>
+              {agents.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-6 py-10 text-center text-sm text-gray-400">
+                    No agents found.
                   </td>
                 </tr>
-              ))}
+              ) : (
+                agents.map((agent, idx) => (
+                  <tr
+                    key={agent.id}
+                    className={[
+                      'transition-colors hover:bg-gray-50',
+                      idx < agents.length - 1 ? 'border-b border-gray-100' : '',
+                    ].join(' ')}
+                  >
+                    <td className="px-6 py-4 text-sm font-medium text-gray-900">{agent.name}</td>
+                    <td className="px-6 py-4 text-sm text-gray-500">
+                      {users.find((u) => u.id === agent.user_id)?.email || '—'}
+                    </td>
+                    <td className="px-6 py-4">
+                      <span
+                        className={[
+                          'inline-flex items-center px-3 py-0.5 rounded text-xs font-semibold',
+                          agent.status === 'ONLINE'
+                            ? 'bg-green-500 text-white'
+                            : 'bg-gray-200 text-gray-700',
+                        ].join(' ')}
+                      >
+                        {agent.status}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-500">
+                      {agent.last_heartbeat_at
+                        ? new Date(agent.last_heartbeat_at).toLocaleString()
+                        : 'Never'}
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <button
+                        onClick={() => navigate(`/agents/${agent.id}`)}
+                        className="text-gray-400 hover:text-gray-700 transition-colors"
+                        aria-label="View agent"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                            d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                            d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                        </svg>
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* Create Agent Dialog */}
+      {/* ── Create Agent modal ────────────────────────────────────────── */}
       {open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50" onClick={handleClose}>
-          <div className="card p-6 max-w-md w-full mx-4" onClick={(e) => e.stopPropagation()}>
-            <h2 className="text-xl font-semibold mb-4 text-gray-900 dark:text-white">Create New Agent</h2>
-            
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+          onClick={handleClose}
+        >
+          <div
+            className="bg-white rounded-2xl border border-gray-200 shadow-xl p-6 w-full max-w-md mx-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-lg font-semibold text-gray-900 mb-5">Create New Agent</h2>
+
             {error && (
-              <div className="mb-4 p-3 bg-red-100 dark:bg-red-900/30 border border-red-400 dark:border-red-800 text-red-700 dark:text-red-400 rounded-lg text-sm">
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm">
                 {error}
               </div>
             )}
-            
+
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">Agent Name</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Agent Name</label>
                 <input
                   type="text"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   className="input"
                   placeholder="Enter agent name"
-                  required
                 />
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                  Agent ID will be auto-generated
-                </p>
+                <p className="text-xs text-gray-400 mt-1">Agent ID will be auto-generated</p>
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">User</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">User</label>
                 <select
                   value={formData.user_id}
                   onChange={(e) => setFormData({ ...formData, user_id: e.target.value })}
@@ -210,7 +238,9 @@ const Agents: React.FC = () => {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">Allowed IP (Optional)</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Allowed IP <span className="text-gray-400 font-normal">(optional)</span>
+                </label>
                 <input
                   type="text"
                   value={formData.allowed_ip}
@@ -218,12 +248,11 @@ const Agents: React.FC = () => {
                   className="input"
                   placeholder="Leave empty for any IP"
                 />
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                  Comma-separated list of IP addresses
-                </p>
+                <p className="text-xs text-gray-400 mt-1">Comma-separated list of IP addresses</p>
               </div>
             </div>
-            <div className="flex justify-end gap-2 mt-6">
+
+            <div className="flex justify-end gap-3 mt-6">
               <button onClick={handleClose} className="btn btn-secondary">
                 Cancel
               </button>
@@ -235,40 +264,45 @@ const Agents: React.FC = () => {
         </div>
       )}
 
-      {/* Token Display Dialog */}
+      {/* ── Token Display modal ───────────────────────────────────────── */}
       {showTokenDialog && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50" onClick={() => setShowTokenDialog(false)}>
-          <div className="card p-6 max-w-2xl w-full mx-4" onClick={(e) => e.stopPropagation()}>
-            <h2 className="text-2xl font-semibold mb-4 text-gray-900 dark:text-white text-center">Agent Created Successfully</h2>
-            
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+          onClick={() => setShowTokenDialog(false)}
+        >
+          <div
+            className="bg-white rounded-2xl border border-gray-200 shadow-xl p-6 w-full max-w-2xl mx-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-lg font-semibold text-gray-900 mb-5 text-center">
+              Agent Created Successfully
+            </h2>
+
             <div className="space-y-4">
               <div>
-                <h3 className="text-lg font-medium mb-2 text-gray-900 dark:text-white">Your Agent Token</h3>
-                <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
+                <p className="text-sm font-medium text-gray-700 mb-1">Your Agent Token</p>
+                <p className="text-xs text-gray-500 mb-2">
                   Copy this token and add it to your agent's configuration file:
                 </p>
-                <div className="p-4 bg-gray-100 dark:bg-dark-lighter rounded-lg border border-gray-300 dark:border-gray-700 font-mono text-sm break-all text-center">
+                <div className="p-4 bg-gray-50 rounded-xl border border-gray-200 font-mono text-sm break-all text-center text-gray-900">
                   {agentToken}
                 </div>
               </div>
 
               <div>
-                <h3 className="text-lg font-medium mb-2 text-gray-900 dark:text-white">Agent ID</h3>
-                <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
-                  Your agent's unique identifier:
-                </p>
-                <div className="p-3 bg-gray-100 dark:bg-dark-lighter rounded-lg border border-gray-300 dark:border-gray-700 font-mono text-sm text-center">
+                <p className="text-sm font-medium text-gray-700 mb-1">Agent ID</p>
+                <div className="p-3 bg-gray-50 rounded-xl border border-gray-200 font-mono text-sm text-center text-gray-900">
                   {agentId}
                 </div>
               </div>
 
               <div>
-                <h3 className="text-lg font-medium mb-2 text-gray-900 dark:text-white">Configuration File</h3>
-                <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
-                  Update your agent's <code className="bg-gray-100 dark:bg-dark-lighter px-1 rounded">meta_config.json</code> file:
+                <p className="text-sm font-medium text-gray-700 mb-1">Configuration File</p>
+                <p className="text-xs text-gray-500 mb-2">
+                  Update your agent's <code className="bg-gray-100 px-1 rounded">meta_config.json</code> file:
                 </p>
-                <div className="p-4 bg-gray-100 dark:bg-dark-lighter rounded-lg border border-gray-300 dark:border-gray-700 font-mono text-xs overflow-auto max-h-64">
-                  {`{
+                <div className="p-4 bg-gray-50 rounded-xl border border-gray-200 font-mono text-xs overflow-auto max-h-48 text-gray-900">
+{`{
   "meta_api": {
     "app_id": "YOUR_APP_ID",
     "app_secret": "YOUR_APP_SECRET",
@@ -285,11 +319,9 @@ const Agents: React.FC = () => {
               </div>
             </div>
 
-            <div className="flex justify-end gap-2 mt-6">
+            <div className="flex justify-end gap-3 mt-6">
               <button
-                onClick={() => {
-                  navigator.clipboard.writeText(agentToken);
-                }}
+                onClick={() => navigator.clipboard.writeText(agentToken)}
                 className="btn btn-secondary"
               >
                 Copy Token

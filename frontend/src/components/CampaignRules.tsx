@@ -152,11 +152,11 @@ const CampaignRules: React.FC<CampaignRulesProps> = ({ agentId, campaigns, refre
   };
 
   return (
-    <div className="card p-6 space-y-4">
+    <div className="bg-white rounded-2xl border border-gray-200 p-6 space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Ad Set Rules</h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400">
+          <h2 className="text-xl font-semibold text-gray-900">Ad Set Rules</h2>
+          <p className="text-sm text-gray-500">
             View and manage AI-generated rules for this agent&apos;s campaigns
           </p>
         </div>
@@ -166,22 +166,22 @@ const CampaignRules: React.FC<CampaignRulesProps> = ({ agentId, campaigns, refre
       </div>
 
       {error && (
-        <div className="p-3 rounded bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-200">{error}</div>
+        <div className="p-3 rounded bg-red-50 text-red-700">{error}</div>
       )}
 
       {loading ? (
         <div className="flex justify-center py-8">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand" />
         </div>
       ) : rules.length === 0 ? (
-        <div className="text-center py-8 text-gray-600 dark:text-gray-400">
+        <div className="text-center py-8 text-gray-600">
           No rules yet. Use the AI assistant to create your first rule.
         </div>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
-              <tr className="border-b border-gray-200 dark:border-gray-700 text-left text-sm text-gray-600 dark:text-gray-300">
+              <tr className="border-b border-gray-200 text-left text-sm text-gray-600">
                 <th className="py-3 px-4">Rule</th>
                 <th className="py-3 px-4">Campaign</th>
                 <th className="py-3 px-4">Action</th>
@@ -198,23 +198,23 @@ const CampaignRules: React.FC<CampaignRulesProps> = ({ agentId, campaigns, refre
                 return (
                   <tr
                     key={rule.id}
-                    className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/60"
+                    className="border-b border-gray-100 hover:bg-gray-50"
                   >
                     <td className="py-3 px-4">
                       <div className="flex items-center gap-2">
-                        <div className="font-medium text-gray-900 dark:text-white">{rule.rule_name}</div>
+                        <div className="font-medium text-gray-900">{rule.rule_name}</div>
                         {rule.meta_rule_id && (
-                          <span className="px-1.5 py-0.5 rounded text-xs bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300" title="Synced to Meta">
+                          <span className="px-1.5 py-0.5 rounded text-xs bg-blue-100 text-blue-700" title="Synced to Meta">
                             Meta
                           </span>
                         )}
                       </div>
                       {rule.description && (
-                        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{rule.description}</p>
+                        <p className="text-sm text-gray-500 mt-1">{rule.description}</p>
                       )}
                     </td>
                     <td className="py-3 px-4">
-                      <div className="text-sm text-gray-900 dark:text-white">
+                      <div className="text-sm text-gray-900">
                         {campaign?.name || 'Unknown campaign'}
                       </div>
                     </td>
@@ -222,8 +222,8 @@ const CampaignRules: React.FC<CampaignRulesProps> = ({ agentId, campaigns, refre
                       <span
                         className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${
                           rule.action.type === 'PAUSE'
-                            ? 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200'
-                            : 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-200'
+                            ? 'bg-red-100 text-red-800'
+                            : 'bg-green-100 text-green-800'
                         }`}
                       >
                         {rule.action.type === 'PAUSE' ? 'Pause' : 'Activate'}
@@ -233,8 +233,8 @@ const CampaignRules: React.FC<CampaignRulesProps> = ({ agentId, campaigns, refre
                       <span
                         className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${
                           rule.execution_mode === 'AUTO'
-                            ? 'bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-200'
-                            : 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-200'
+                            ? 'bg-purple-100 text-purple-800'
+                            : 'bg-blue-100 text-blue-800'
                         }`}
                       >
                         {rule.execution_mode === 'AUTO' ? 'Automatic' : 'Manual'}
@@ -251,7 +251,7 @@ const CampaignRules: React.FC<CampaignRulesProps> = ({ agentId, campaigns, refre
                         />
                         <div
                           className={`relative w-10 h-5 rounded-full transition-colors duration-200 ${
-                            rule.is_active ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'
+                            rule.is_active ? 'bg-green-500' : 'bg-gray-300'
                           } ${updatingRuleId === rule.id ? 'opacity-50 cursor-not-allowed' : ''}`}
                         >
                           <div
@@ -262,7 +262,7 @@ const CampaignRules: React.FC<CampaignRulesProps> = ({ agentId, campaigns, refre
                         </div>
                       </label>
                     </td>
-                    <td className="py-3 px-4 text-sm text-gray-700 dark:text-gray-300">
+                    <td className="py-3 px-4 text-sm text-gray-700">
                       {rule.last_executed_at
                         ? new Date(rule.last_executed_at).toLocaleString()
                         : 'Never'}
@@ -270,7 +270,7 @@ const CampaignRules: React.FC<CampaignRulesProps> = ({ agentId, campaigns, refre
                         {rule.execution_count} run{rule.execution_count === 1 ? '' : 's'}
                       </div>
                     </td>
-                    <td className="py-3 px-4 text-sm text-gray-900 dark:text-white">
+                    <td className="py-3 px-4 text-sm text-gray-900">
                       {rule.last_matched_count ?? '—'}
                       <div className="text-xs text-gray-500">last execution</div>
                     </td>
@@ -319,17 +319,17 @@ const CampaignRules: React.FC<CampaignRulesProps> = ({ agentId, campaigns, refre
 
       {previewState.rule && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black bg-opacity-50">
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-2xl mx-4">
-            <div className="flex items-center justify-between border-b border-gray-200 dark:border-gray-700 p-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl mx-4">
+            <div className="flex items-center justify-between border-b border-gray-200 p-4">
               <div>
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                <h3 className="text-lg font-semibold text-gray-900">
                   Preview: {previewState.rule.rule_name}
                 </h3>
-                <p className="text-sm text-gray-500 dark:text-gray-400">
+                <p className="text-sm text-gray-500">
                   Campaign: {campaignMap[previewState.rule.campaign_id]?.name || previewState.rule.campaign_id}
                 </p>
               </div>
-              <button onClick={closePreview} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+              <button onClick={closePreview} className="text-gray-400 hover:text-gray-600">
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
@@ -338,22 +338,22 @@ const CampaignRules: React.FC<CampaignRulesProps> = ({ agentId, campaigns, refre
             <div className="p-4">
               {previewState.loading ? (
                 <div className="flex justify-center py-8">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand" />
                 </div>
               ) : previewState.error ? (
-                <div className="p-3 rounded bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-200">
+                <div className="p-3 rounded bg-red-50 text-red-700">
                   {previewState.error}
                 </div>
               ) : previewState.data ? (
                 <div className="space-y-4">
-                  <div className="flex justify-between text-sm text-gray-700 dark:text-gray-300">
+                  <div className="flex justify-between text-sm text-gray-700">
                     <span>Total ad sets: {previewState.data.total_ad_sets}</span>
                     <span>Matching now: {previewState.data.matching_ad_sets}</span>
                   </div>
                   {previewState.data.matched_ad_sets.length > 0 ? (
-                    <div className="max-h-60 overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-lg">
+                    <div className="max-h-60 overflow-y-auto border border-gray-200 rounded-lg">
                       <table className="w-full text-sm">
-                        <thead className="bg-gray-50 dark:bg-gray-700/50 text-gray-600 dark:text-gray-300">
+                        <thead className="bg-gray-50 text-gray-600">
                           <tr>
                             <th className="py-2 px-3 text-left">Ad Set</th>
                             <th className="py-2 px-3 text-left">Status</th>
@@ -361,16 +361,16 @@ const CampaignRules: React.FC<CampaignRulesProps> = ({ agentId, campaigns, refre
                         </thead>
                         <tbody>
                           {previewState.data.matched_ad_sets.map((adSet) => (
-                            <tr key={adSet.id} className="border-b border-gray-100 dark:border-gray-800">
-                              <td className="py-2 px-3 text-gray-900 dark:text-white">{adSet.name}</td>
-                              <td className="py-2 px-3 text-gray-600 dark:text-gray-300">{adSet.status}</td>
+                            <tr key={adSet.id} className="border-b border-gray-100">
+                              <td className="py-2 px-3 text-gray-900">{adSet.name}</td>
+                              <td className="py-2 px-3 text-gray-600">{adSet.status}</td>
                             </tr>
                           ))}
                         </tbody>
                       </table>
                     </div>
                   ) : (
-                    <div className="text-center py-6 text-gray-500 dark:text-gray-400">
+                    <div className="text-center py-6 text-gray-500">
                       No ad sets currently match this rule.
                     </div>
                   )}
@@ -384,30 +384,30 @@ const CampaignRules: React.FC<CampaignRulesProps> = ({ agentId, campaigns, refre
       {/* Delete Confirmation Modal */}
       {deleteConfirmRule && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md mx-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4">
             <div className="p-6">
               <div className="flex items-center gap-4 mb-4">
-                <div className="flex-shrink-0 w-12 h-12 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
-                  <svg className="w-6 h-6 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div className="flex-shrink-0 w-12 h-12 rounded-full bg-red-100 flex items-center justify-center">
+                  <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                   </svg>
                 </div>
                 <div>
-                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                  <h3 className="text-lg font-semibold text-gray-900">
                     Delete Rule
                   </h3>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                  <p className="text-sm text-gray-500">
                     This action cannot be undone.
                   </p>
                 </div>
               </div>
 
               <div className="mb-6">
-                <p className="text-gray-700 dark:text-gray-300">
+                <p className="text-gray-700">
                   Are you sure you want to delete the rule <span className="font-semibold">"{deleteConfirmRule.rule_name}"</span>?
                 </p>
                 {deleteConfirmRule.meta_rule_id && (
-                  <p className="mt-2 text-sm text-blue-600 dark:text-blue-400">
+                  <p className="mt-2 text-sm text-blue-600">
                     This rule is synced to Meta and will also be deleted from Meta Ads Manager.
                   </p>
                 )}
