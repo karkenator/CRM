@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import Logo from './Logo';
+import { useWorkspace } from '../contexts/WorkspaceContext';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -14,19 +15,31 @@ interface NavItem {
 
 /* ─── Icons ─────────────────────────────────────────────────────────────── */
 
-const DashboardIcon = () => (
+const ActionCenterIcon = () => (
   <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <rect x="3" y="3" width="7" height="7" rx="1.5" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
-    <rect x="14" y="3" width="7" height="7" rx="1.5" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
-    <rect x="3" y="14" width="7" height="7" rx="1.5" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
-    <rect x="14" y="14" width="7" height="7" rx="1.5" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+      d="M13 10V3L4 14h7v7l9-11h-7z" />
+  </svg>
+);
+
+const TopCreativesIcon = () => (
+  <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+      d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+  </svg>
+);
+
+const TopAdsIcon = () => (
+  <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+      d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
   </svg>
 );
 
 const AgentsIcon = () => (
   <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-      d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+      d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0112 15a9.065 9.065 0 00-6.23-.693L5 14.5m14.8.8l1.402 1.402c1 1 .03 2.798-1.318 2.552l-3.55-.532a54.077 54.077 0 00-8.518 0l-3.55.532c-1.348.246-2.317-1.552-1.318-2.552L5 14.5" />
   </svg>
 );
 
@@ -40,7 +53,7 @@ const UsersIcon = () => (
 const CreativeStudioIcon = () => (
   <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-      d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+      d="M9.53 16.122a3 3 0 00-5.78 1.128 2.25 2.25 0 01-2.4 2.245 4.5 4.5 0 008.4-2.245c0-.399-.078-.78-.22-1.128zm0 0a15.998 15.998 0 003.388-1.62m-5.043-.025a15.994 15.994 0 011.622-3.395m3.42 3.42a15.995 15.995 0 004.764-4.648l3.876-5.814a1.151 1.151 0 00-1.597-1.597L14.146 6.32a15.996 15.996 0 00-4.649 4.763m3.42 3.42a6.776 6.776 0 00-3.42-3.42" />
   </svg>
 );
 
@@ -66,14 +79,29 @@ const LogoutIcon = () => (
   </svg>
 );
 
+const ChevronDownIcon = () => (
+  <svg className="w-4 h-4 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+  </svg>
+);
+
+const SparkleIcon = () => (
+  <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+      d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z" />
+  </svg>
+);
+
 /* ─── Nav config ─────────────────────────────────────────────────────────── */
 
 const navItems: NavItem[] = [
-  { label: 'Dashboard',       path: '/dashboard',       icon: <DashboardIcon /> },
-  { label: 'Agents',          path: '/agents',          icon: <AgentsIcon /> },
-  { label: 'Users',           path: '/users',           icon: <UsersIcon /> },
-  { label: 'Creative Studio', path: '/creative-studio', icon: <CreativeStudioIcon /> },
-  { label: 'Notifications',   path: '/notifications',   icon: <NotificationsIcon /> },
+  { label: 'Action Center',  path: '/action-center',  icon: <ActionCenterIcon /> },
+  { label: 'Top Creatives',  path: '/top-creatives',  icon: <TopCreativesIcon /> },
+  { label: 'Top Ads',        path: '/top-ads',        icon: <TopAdsIcon /> },
+  { label: 'Agents',         path: '/agents',         icon: <AgentsIcon /> },
+  { label: 'Users',          path: '/users',          icon: <UsersIcon /> },
+  { label: 'Creative Studio',path: '/creative-studio',icon: <CreativeStudioIcon /> },
+  { label: 'Notifications',  path: '/notifications',  icon: <NotificationsIcon /> },
 ];
 
 /* ─── JWT helper ─────────────────────────────────────────────────────────── */
@@ -83,7 +111,6 @@ function parseToken(token: string | null): { email: string; role: string } | nul
   try {
     const payload = JSON.parse(atob(token.split('.')[1]));
     return {
-      // prefer email over sub — sub is the MongoDB user ID
       email: payload.email ?? payload.sub ?? '',
       role:  payload.role ?? 'USER',
     };
@@ -104,12 +131,19 @@ function capitalize(str: string): string {
 
 const Layout: React.FC<LayoutProps> = ({ children }) => {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [workspaceOpen, setWorkspaceOpen] = useState(false);
   const navigate  = useNavigate();
   const location  = useLocation();
+  const {
+    campaigns,
+    selectedCampaign,
+    setSelectedCampaign,
+    loading: workspaceLoading,
+    campaignsLoading,
+  } = useWorkspace();
 
   const user = useMemo(
     () => parseToken(localStorage.getItem('access_token')),
-    // re-parse whenever storage changes (login/logout)
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [localStorage.getItem('access_token')]
   );
@@ -132,10 +166,10 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           key={item.path}
           onClick={() => { navigate(item.path); onNavigate?.(); }}
           className={[
-            'w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors',
+            'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
             active
               ? 'bg-brand text-white'
-              : 'text-gray-800 hover:bg-brand-light',
+              : 'text-gray-700 hover:bg-brand-light',
           ].join(' ')}
         >
           <span className={active ? 'text-white' : 'text-gray-400'}>
@@ -146,32 +180,56 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       );
     });
 
-  /* ── Bottom actions ── */
-  const renderBottom = (onNavigate?: () => void) => (
-    <>
-      <button
-        onClick={() => { navigate('/settings'); onNavigate?.(); }}
-        className="w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium text-gray-800 hover:bg-brand-light transition-colors"
-      >
-        <span className="text-gray-400"><SettingsIcon /></span>
-        Settings
-      </button>
-      <button
-        onClick={handleLogout}
-        className="w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium text-gray-800 hover:bg-brand-light transition-colors"
-      >
-        <span className="text-gray-400"><LogoutIcon /></span>
-        Logout
-      </button>
-    </>
-  );
-
   /* ── Sidebar shell ── */
   const sidebarShell = (onNavigate?: () => void) => (
     <div className="flex flex-col h-full bg-white border-r border-gray-100">
       {/* Logo */}
-      <div className="px-5 py-5 shrink-0">
+      <div className="px-5 py-4 shrink-0">
         <Logo />
+      </div>
+
+      {/* Workspace Selector — shows campaigns */}
+      <div className="px-3 pb-3 shrink-0 relative">
+        <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wider mb-1 px-1">
+          Workspace
+        </p>
+        <button
+          onClick={() => setWorkspaceOpen((v) => !v)}
+          className="w-full flex items-center justify-between px-3 py-2 rounded-lg border border-gray-100 hover:bg-gray-50 transition-colors"
+        >
+          <span className="text-sm font-semibold text-gray-900 truncate">
+            {workspaceLoading || campaignsLoading
+              ? '…'
+              : selectedCampaign?.name ?? 'No campaigns'}
+          </span>
+          <ChevronDownIcon />
+        </button>
+
+        {workspaceOpen && campaigns.length > 0 && (
+          <div className="absolute left-3 right-3 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden z-50 max-h-64 overflow-y-auto">
+            {campaigns.map((campaign) => (
+              <button
+                key={campaign.id}
+                onClick={() => {
+                  setSelectedCampaign(campaign);
+                  setWorkspaceOpen(false);
+                  onNavigate?.();
+                }}
+                className={[
+                  'w-full text-left px-3 py-2.5 text-sm transition-colors hover:bg-gray-50',
+                  selectedCampaign?.id === campaign.id
+                    ? 'text-brand font-semibold bg-blue-50'
+                    : 'text-gray-700',
+                ].join(' ')}
+              >
+                <div className="truncate">{campaign.name}</div>
+                <div className="text-[10px] text-gray-400 mt-0.5 truncate">
+                  {campaign.objective} · {campaign.status}
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Primary nav */}
@@ -179,9 +237,38 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         {renderNav(onNavigate)}
       </nav>
 
+      {/* AI Assistant button */}
+      <div className="px-3 pb-2 shrink-0">
+        <button
+          onClick={() => { navigate('/ai-assistant'); onNavigate?.(); }}
+          className={[
+            'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all',
+            isActive('/ai-assistant')
+              ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-md'
+              : 'bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:opacity-90',
+          ].join(' ')}
+        >
+          <SparkleIcon />
+          AI Assistant
+        </button>
+      </div>
+
       {/* Bottom actions */}
-      <div className="px-3 pb-5 pt-3 border-t border-gray-100 shrink-0 space-y-0.5">
-        {renderBottom(onNavigate)}
+      <div className="px-3 pb-5 pt-2 border-t border-gray-100 shrink-0 space-y-0.5">
+        <button
+          onClick={() => { navigate('/settings'); onNavigate?.(); }}
+          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-700 hover:bg-brand-light transition-colors"
+        >
+          <span className="text-gray-400"><SettingsIcon /></span>
+          Settings
+        </button>
+        <button
+          onClick={handleLogout}
+          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-700 hover:bg-brand-light transition-colors"
+        >
+          <span className="text-gray-400"><LogoutIcon /></span>
+          Logout
+        </button>
       </div>
     </div>
   );
@@ -189,7 +276,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   return (
     <div className="flex h-screen bg-gray-50">
       {/* Desktop sidebar */}
-      <aside className="hidden md:flex flex-col w-[200px] shrink-0">
+      <aside className="hidden md:flex flex-col w-[220px] shrink-0">
         {sidebarShell()}
       </aside>
 
@@ -200,7 +287,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             className="absolute inset-0 bg-black/40"
             onClick={() => setMobileOpen(false)}
           />
-          <div className="absolute left-0 top-0 bottom-0 w-[200px] z-50">
+          <div className="absolute left-0 top-0 bottom-0 w-[220px] z-50">
             {sidebarShell(() => setMobileOpen(false))}
           </div>
         </div>
@@ -221,7 +308,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             </svg>
           </button>
 
-          {/* Spacer for desktop (no title in header — title is inside page content) */}
           <div className="hidden md:block" />
 
           {/* User identity */}

@@ -2,9 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiService } from '../services/api';
 import { Agent, User, AgentCreate } from '../types';
+import { useWorkspace } from '../contexts/WorkspaceContext';
 
 const Agents: React.FC = () => {
   const navigate = useNavigate();
+  const { setSelectedAgent } = useWorkspace();
   const [agents, setAgents] = useState<Agent[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
@@ -173,7 +175,7 @@ const Agents: React.FC = () => {
                     </td>
                     <td className="px-6 py-4 text-right">
                       <button
-                        onClick={() => navigate(`/agents/${agent.id}`)}
+                        onClick={() => { setSelectedAgent(agent); navigate(`/agents/${agent.id}`); }}
                         className="text-gray-400 hover:text-gray-700 transition-colors"
                         aria-label="View agent"
                       >
